@@ -15,8 +15,10 @@ use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
 use core_foundation::dictionary::CFDictionary;
 use core_foundation::string::{CFString, CFStringRef as CFCfStringRef};
+use tauri::AppHandle;
 
-use crate::switcher::{Mode, Switcher};
+use crate::controller;
+use crate::switcher::Mode;
 
 // ---- Opaque C pointer aliases ----
 type CFMachPortRef = *mut c_void;
@@ -84,9 +86,9 @@ extern "C" {
 }
 
 /// State handed to the callback through the refcon pointer. Lives for the app's
-/// lifetime (intentionally leaked).
+/// lifetime (intentionally leaked). Switcher state lives in `controller`.
 struct TapState {
-    switcher: Switcher,
+    app: AppHandle,
     tap: CFMachPortRef,
 }
 
@@ -120,34 +122,21 @@ unsafe extern "C" fn tap_callback(
                     Mode::Windows
                 };
                 if shift {
-                    state.switcher.advance(-1);
-                } else if !state.switcher.active {
-                    let items = match mode {
-                        Mode::Apps => crate::apps::build_ordered_apps(),
-                        // Windows mode is populated in a later phase; keep a stub list.
-                        Mode::Windows => (0..5)
-                            .map(|i| crate::switcher::AppItem {
-                                pid: -(i as i32),
-                                name: format!("window-{i}"),
-                            })
-                            .collect(),
-                    };
-                    // Start on the previous item (index 1) so a single Ctrl+Tap+release
-                    // jumps to the last-used app.
-                    let selected = if items.len() > 1 { 1 } else { 0 };
-                    state.switcher.start(mode, items, selected);
+                    controller::gesture_advance(&state.app, -1);
+                } else if !controller::is_active() {
+                    controller::gesture_start(&state.app, mode);
                 } else {
-                    state.switcher.advance(1);
+                    controller::gesture_advance(&state.app, 1);
                 }
                 // Consume Tab/§ so they never reach the app underneath.
-                if state.switcher.active {
+                if controller::is_active() {
                     return ptr::null_mut();
                 }
                 return event;
             }
 
-            if keycode == KEY_ESC && state.switcher.active {
-                state.switcher.cancel();
+            if keycode == KEY_ESC && controller::is_active() {
+                controller::gesture_cancel(&state.app);
                 return ptr::null_mut();
             }
 
@@ -157,13 +146,8 @@ unsafe extern "C" fn tap_callback(
             let flags = CGEventGetFlags(event);
             let ctrl = flags & MASK_CONTROL != 0;
             // Ctrl released while active → confirm the selection and activate it.
-            if !ctrl && state.switcher.active {
-                let mode = state.switcher.mode;
-                if let Some(item) = state.switcher.commit() {
-                    if mode == Mode::Apps {
-                        crate::apps::activate(item.pid);
-                    }
-                }
+            if !ctrl && controller::is_active() {
+                controller::gesture_commit(&state.app);
             }
             event
         }
@@ -193,10 +177,10 @@ pub fn ensure_accessibility() -> bool {
 
 /// Create the event tap, wire it to the main run loop, and enable it.
 /// Must run on the main thread (Tauri's setup does).
-pub fn install_event_tap() {
+pub fn install_event_tap(app: AppHandle) {
     unsafe {
         let state = Box::new(TapState {
-            switcher: Switcher::new(),
+            app,
             tap: ptr::null_mut(),
         });
         let state_ptr = Box::into_raw(state);

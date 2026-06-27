@@ -78,8 +78,8 @@ navigation with Tab / Shift+Tab, mouse selection (hover + click).
 - `switcher_commit(index)` — set the index, commit (activate app/window), hide the
   overlay, reset state.
 
-> Phase 0 only ships the scaffolding commands `show_overlay` / `hide_overlay`
-> (manual test buttons). The contract above is implemented in later phases.
+> The contract above is implemented as of Phase 3. `show_overlay` / `hide_overlay`
+> remain as Phase-0 dev buttons (show the empty overlay) and are harmless.
 
 ## TDD policy (from the session Preludio)
 
@@ -109,6 +109,13 @@ missing" — for that code a unit test is not required.
 - `src-tauri/src/apps.rs` — real app enumeration (NSWorkspace), 128px PNG icon data
   URLs (cached per pid), `activate(pid)`, and the NSWorkspace activation observer
   that keeps the MRU current.
+- `src-tauri/src/controller.rs` — single source of truth for switcher state
+  (`Mutex<Switcher>`); orchestrates the contract events, panel show/size/position,
+  and activation. Driven by both the event tap (keyboard) and the Tauri commands
+  (mouse).
+- `src-tauri/src/events.rs` — serde payload types for the switcher contract
+  (camelCase field names, unit-tested).
+- `src/App.tsx` — the overlay React UI (Alt-Tab style) + the dev-controls view.
 - `src-tauri/examples/post_keys.rs` — test harness that posts real CGEvents
   (`CGEventPost`) to drive the gesture for verification. Run with `tauri dev` up:
   `cargo run --example post_keys -- <apps-fwd|apps-back|windows|esc|probe>`.
@@ -184,3 +191,25 @@ underneath (it is consumed). Automated equivalent: the `post_keys` example above
   - Deps added: `block2`, `base64`.
   - Windows mode (Ctrl+§) still uses a stub list; real windows arrive in a later
     phase. `post_keys` gained an `apps-one` scenario (single Ctrl+Tab+release).
+
+- **2026-06-27 (Phase 3):**
+  - Overlay UI driven by the contract events. `controller.rs` owns the switcher
+    state (moved out of the tap's `TapState`) so keyboard (tap) and mouse (Tauri
+    commands `switcher_hover` / `switcher_commit`) drive the same state.
+  - **Mouse fix:** the overlay must be shown with `makeKeyAndOrderFront` (key
+    window), not `orderFrontRegardless` — otherwise the WKWebView gets no
+    mouse-moved/hover and clicks don't land. A NonactivatingPanel becomes key
+    WITHOUT activating our background app, so this is safe. Also set
+    `acceptsMouseMovedEvents(true)`.
+  - `switcher_commit` resets the state after activating, so the subsequent Ctrl
+    release is a no-op (no double-commit). `switcher_hover` only mutates state +
+    emits `switcher:select` (no native op → safe off-main-thread); `switcher_commit`
+    runs on the main thread (panel + activation).
+  - Panel is sized in Rust to the item count (`controller` constants must match the
+    React item width) and centered on the screen containing the mouse.
+  - Payload serialization is unit-tested (`appName` / `iconDataUrl` camelCase).
+  - Verification note: AppleScript/System Events `click at` on the panel fails
+    (-25208); use `CGEventPost` mouse events (the `post_keys` `click` / `mouseonly`
+    / `moveonly` / `hold` scenarios) to drive the mouse for testing. `screencapture`
+    requires Screen Recording for the host terminal (used only for dev screenshots,
+    not by the app).

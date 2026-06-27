@@ -11,8 +11,11 @@
 
 use std::{thread, time::Duration};
 
-use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
+use core_graphics::event::{
+    CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton,
+};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+use core_graphics::geometry::CGPoint;
 
 const KC_TAB: u16 = 48;
 const KC_SECTION: u16 = 10;
@@ -51,6 +54,20 @@ fn tap_key(keycode: u16, flags: CGEventFlags) {
     pause();
 }
 
+fn mouse_click(x: f64, y: f64) {
+    let pt = CGPoint::new(x, y);
+    for ty in [
+        CGEventType::MouseMoved,
+        CGEventType::LeftMouseDown,
+        CGEventType::LeftMouseUp,
+    ] {
+        let ev = CGEvent::new_mouse_event(src(), ty, pt, CGMouseButton::Left)
+            .expect("mouse event");
+        ev.post(CGEventTapLocation::HID);
+        thread::sleep(Duration::from_millis(40));
+    }
+}
+
 fn main() {
     let scenario = std::env::args().nth(1).unwrap_or_else(|| "apps-fwd".into());
     println!("[post_keys] running scenario: {scenario}");
@@ -64,10 +81,49 @@ fn main() {
             tap_key(KC_TAB, ctrl);
             ctrl_up();
         }
+        // Hold the gesture open for a few seconds (for screenshots), then release.
+        // Optional 2nd arg = number of extra Tab advances while held.
+        "hold" => {
+            let extra: usize = std::env::args()
+                .nth(2)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            ctrl_down();
+            tap_key(KC_TAB, ctrl);
+            for _ in 0..extra {
+                tap_key(KC_TAB, ctrl);
+            }
+            thread::sleep(Duration::from_millis(3000));
+            ctrl_up();
+        }
         // Single Ctrl+Tab+release → start(selected=1), commit(1) = previous app.
         "apps-one" => {
             ctrl_down();
             tap_key(KC_TAB, ctrl);
+            ctrl_up();
+        }
+        // Just a mouse click at (x,y) — use during an existing `hold`.
+        "mouseonly" => {
+            let x: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            let y: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            mouse_click(x, y);
+        }
+        // Just a mouse move to (x,y) — use during an existing `hold` to test hover.
+        "moveonly" => {
+            let x: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            let y: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            let ev = CGEvent::new_mouse_event(src(), CGEventType::MouseMoved, CGPoint::new(x, y), CGMouseButton::Left).unwrap();
+            ev.post(CGEventTapLocation::HID);
+        }
+        // Open the gesture, click at (x,y) on an item, then release Ctrl.
+        "click" => {
+            let x: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            let y: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            ctrl_down();
+            tap_key(KC_TAB, ctrl);
+            thread::sleep(Duration::from_millis(500));
+            mouse_click(x, y);
+            thread::sleep(Duration::from_millis(500));
             ctrl_up();
         }
         // Ctrl held, Tab x3 forward, release → start(1), +1, +1, commit(3).

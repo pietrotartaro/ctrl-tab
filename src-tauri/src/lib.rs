@@ -5,10 +5,13 @@
 // and exposes show_overlay / hide_overlay test commands. No hotkeys or
 // native switching logic yet.
 
-// These two traits must be in scope (unqualified) for the panel! macro expansion.
 mod apps;
+mod controller;
+mod events;
 mod hotkey;
 mod switcher;
+
+// These two traits must be in scope (unqualified) for the panel! macro expansion.
 
 use objc2::runtime::NSObjectProtocol;
 use objc2::{ClassType, Message};
@@ -48,6 +51,21 @@ fn hide_overlay(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Mouse hover over a switcher item: update selection + re-emit `switcher:select`.
+#[tauri::command]
+fn switcher_hover(app: AppHandle, index: usize) {
+    controller::hover(&app, index);
+}
+
+/// Mouse click on a switcher item: set index, activate, hide overlay, reset state
+/// (so the later Ctrl release does not double-commit). Runs on the main thread.
+#[tauri::command]
+fn switcher_commit(app: AppHandle, index: usize) -> Result<(), String> {
+    let app2 = app.clone();
+    app.run_on_main_thread(move || controller::commit_index(&app2, index))
+        .map_err(|e| e.to_string())
+}
+
 /// Build the overlay NSPanel: transparent, borderless, floating, on all Spaces,
 /// non-activating, born hidden + centered, receiving mouse clicks.
 fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
@@ -82,6 +100,8 @@ fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
 
     // Receive mouse events (hover/click) — explicit per the spec.
     panel.set_ignores_mouse_events(false);
+    // Deliver mouse-moved events so the webview's hover (onMouseEnter) fires.
+    panel.set_accepts_mouse_moved_events(true);
     // Ensure it starts hidden regardless of builder ordering.
     panel.hide();
 
@@ -93,7 +113,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_nspanel::init())
-        .invoke_handler(tauri::generate_handler![show_overlay, hide_overlay])
+        .invoke_handler(tauri::generate_handler![
+            show_overlay,
+            hide_overlay,
+            switcher_hover,
+            switcher_commit
+        ])
         .setup(|app| {
             // Background utility: no Dock icon, no menu bar.
             #[cfg(target_os = "macos")]
@@ -107,7 +132,7 @@ pub fn run() {
             {
                 hotkey::ensure_accessibility();
                 apps::install_workspace_observer();
-                hotkey::install_event_tap();
+                hotkey::install_event_tap(app.handle().clone());
             }
 
             Ok(())

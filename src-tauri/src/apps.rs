@@ -148,6 +148,11 @@ pub fn build_ordered_apps() -> Vec<AppItem> {
     ordered
 }
 
+/// Cached icon data URL for a pid (if `build_ordered_apps` resolved it).
+pub fn icon_for(pid: i32) -> Option<String> {
+    app_state().lock().unwrap().icon_cache.get(&pid).cloned()
+}
+
 /// Activate the app with the given pid, bringing it to the front.
 pub fn activate(pid: i32) {
     if let Some(app) = running_app(pid) {
