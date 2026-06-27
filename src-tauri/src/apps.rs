@@ -153,6 +153,23 @@ pub fn icon_for(pid: i32) -> Option<String> {
     app_state().lock().unwrap().icon_cache.get(&pid).cloned()
 }
 
+/// Like `icon_for`, but renders + caches the icon if it isn't cached yet.
+pub fn ensure_icon(pid: i32) -> Option<String> {
+    if let Some(url) = icon_for(pid) {
+        return Some(url);
+    }
+    let app = running_app(pid)?;
+    let url = icon_data_url(&app)?;
+    app_state().lock().unwrap().icon_cache.insert(pid, url.clone());
+    Some(url)
+}
+
+/// The frontmost app's (pid, localized name), if any.
+pub fn frontmost() -> Option<(i32, String)> {
+    let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
+    Some((app.processIdentifier(), nsstring_to_string(app.localizedName())))
+}
+
 /// Activate the app with the given pid, bringing it to the front.
 pub fn activate(pid: i32) {
     if let Some(app) = running_app(pid) {

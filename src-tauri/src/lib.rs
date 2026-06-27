@@ -10,6 +10,7 @@ mod controller;
 mod events;
 mod hotkey;
 mod switcher;
+mod windows;
 
 // These two traits must be in scope (unqualified) for the panel! macro expansion.
 

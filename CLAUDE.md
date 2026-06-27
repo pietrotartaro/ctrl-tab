@@ -30,7 +30,7 @@ navigation with Tab / Shift+Tab, mouse selection (hover + click).
 - Hotkeys: native **CGEventTap** (NOT the global-shortcut plugin). [Phase 1 ✓]
 - App list/icons/activation via `objc2-app-kit` (NSWorkspace / NSRunningApplication
   / NSImage). [Phase 2 ✓] Window enumeration, titles and raising via the
-  **Accessibility API**. [Phase ≥3]
+  **Accessibility API** (raw AX FFI). [Phase 4 ✓]
 - Permissions: **Accessibility only. No Screen Recording.**
 
 > **Accessibility is mandatory for the hotkey.** An active CGEventTap on
@@ -115,6 +115,9 @@ missing" — for that code a unit test is not required.
   (mouse).
 - `src-tauri/src/events.rs` — serde payload types for the switcher contract
   (camelCase field names, unit-tested).
+- `src-tauri/src/windows.rs` — frontmost app's window enumeration + raising via
+  raw Accessibility FFI (AXUIElementCreateApplication / CopyAttributeValue /
+  PerformAction). Stores the AX window refs in the same order as the switcher list.
 - `src/App.tsx` — the overlay React UI (Alt-Tab style) + the dev-controls view.
 - `src-tauri/examples/post_keys.rs` — test harness that posts real CGEvents
   (`CGEventPost`) to drive the gesture for verification. Run with `tauri dev` up:
@@ -213,3 +216,21 @@ underneath (it is consumed). Automated equivalent: the `post_keys` example above
     / `moveonly` / `hold` scenarios) to drive the mouse for testing. `screencapture`
     requires Screen Recording for the host terminal (used only for dev screenshots,
     not by the app).
+
+- **2026-06-27 (Phase 4):**
+  - Windows mode (Ctrl+§) via raw Accessibility FFI in `windows.rs`. `enumerate(pid)`
+    reads `AXWindows`, keeps role==`AXWindow` with a non-empty `AXTitle`, retains the
+    AX refs (in list order), returns titles. `raise(index)` does `AXRaise` +
+    set `AXMain` true, then activates the owner app.
+  - The AX bindings are raw FFI (no objc2 AX crate). It was NOT fragile — no Swift
+    sidecar needed. Attribute/role/action names are created as CFStrings from their
+    stable string values ("AXWindows", "AXTitle", "AXRole", "AXMain", "AXRaise").
+  - `controller` builds window items with `pid` = owner app pid (so all share the
+    app icon) and `name` = window title; the list index lines up with
+    `windows::raise`. `build_show_payload` makes item `id` unique (`pid-index`) since
+    windows share a pid (avoids React key collisions).
+  - 0 windows → overlay is NOT shown (gesture stays inactive). 1 window → a single
+    item (selected 0). The 0-window path is code-handled but was not runtime-tested.
+  - § key code is `KEY_SECTION = 10` (ISO) in `hotkey.rs` — remap there if needed.
+  - Apps mode and windows mode are independent (verified: Ctrl+Tab still app-switches
+    after using Ctrl+§).

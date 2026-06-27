@@ -96,6 +96,20 @@ fn main() {
             thread::sleep(Duration::from_millis(3000));
             ctrl_up();
         }
+        // Hold the WINDOWS gesture (Ctrl+§) open for screenshots, optional extra §.
+        "hold-win" => {
+            let extra: usize = std::env::args()
+                .nth(2)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            ctrl_down();
+            tap_key(KC_SECTION, ctrl);
+            for _ in 0..extra {
+                tap_key(KC_SECTION, ctrl);
+            }
+            thread::sleep(Duration::from_millis(3000));
+            ctrl_up();
+        }
         // Single Ctrl+Tab+release → start(selected=1), commit(1) = previous app.
         "apps-one" => {
             ctrl_down();

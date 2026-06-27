@@ -10,9 +10,9 @@ use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
 use tauri::{AppHandle, Emitter};
 use tauri_nspanel::ManagerExt;
 
-use crate::apps;
 use crate::events::{SelectPayload, ShowPayload, SwitchItem};
 use crate::switcher::{AppItem, Mode, Switcher};
+use crate::{apps, windows};
 
 const OVERLAY_LABEL: &str = "overlay";
 
@@ -35,8 +35,10 @@ fn build_show_payload(s: &Switcher) -> ShowPayload {
     let items = s
         .items
         .iter()
-        .map(|a| SwitchItem {
-            id: a.pid.to_string(),
+        .enumerate()
+        .map(|(i, a)| SwitchItem {
+            // Unique per item: in windows mode every item shares the owner pid.
+            id: format!("{}-{}", a.pid, i),
             title: a.name.clone(),
             app_name: a.name.clone(),
             icon_data_url: apps::icon_for(a.pid).unwrap_or_default(),
@@ -105,12 +107,17 @@ fn hide_panel(app: &AppHandle) {
     }
 }
 
-fn stub_window_items() -> Vec<AppItem> {
-    (0..5)
-        .map(|i| AppItem {
-            pid: -(i as i32),
-            name: format!("window-{i}"),
-        })
+/// Build the window-mode item list for the frontmost app. Each item carries the
+/// owner pid (so all share the app icon); titles come from the windows. The list
+/// index lines up with `windows::raise`.
+fn window_items() -> Vec<AppItem> {
+    let Some((pid, _name)) = apps::frontmost() else {
+        return Vec::new();
+    };
+    apps::ensure_icon(pid);
+    windows::enumerate(pid)
+        .into_iter()
+        .map(|title| AppItem { pid, name: title })
         .collect()
 }
 
@@ -119,8 +126,13 @@ fn stub_window_items() -> Vec<AppItem> {
 pub fn gesture_start(app: &AppHandle, mode: Mode) {
     let items = match mode {
         Mode::Apps => apps::build_ordered_apps(),
-        Mode::Windows => stub_window_items(),
+        Mode::Windows => window_items(),
     };
+    // Nothing to switch between → don't show the overlay (gesture stays inactive).
+    if items.is_empty() {
+        eprintln!("[ctl-tab] gesture_start {}: no items, not showing", mode.label());
+        return;
+    }
     let selected = if items.len() > 1 { 1 } else { 0 };
 
     let payload = {
@@ -144,19 +156,26 @@ pub fn gesture_advance(app: &AppHandle, delta: isize) {
     let _ = app.emit("switcher:select", SelectPayload { selected });
 }
 
-pub fn gesture_commit(app: &AppHandle) {
-    let (mode, item) = {
-        let mut s = switcher().lock().unwrap();
-        let mode = s.mode;
-        (mode, s.commit())
-    };
+/// Hide the overlay and act on the committed selection (activate app / raise window).
+fn perform_commit(app: &AppHandle, mode: Mode, index: usize, item: Option<AppItem>) {
     let _ = app.emit("switcher:hide", ());
     hide_panel(app);
-    if mode == Mode::Apps {
-        if let Some(it) = item {
-            apps::activate(it.pid);
+    match mode {
+        Mode::Apps => {
+            if let Some(it) = item {
+                apps::activate(it.pid);
+            }
         }
+        Mode::Windows => windows::raise(index),
     }
+}
+
+pub fn gesture_commit(app: &AppHandle) {
+    let (mode, index, item) = {
+        let mut s = switcher().lock().unwrap();
+        (s.mode, s.selected, s.commit())
+    };
+    perform_commit(app, mode, index, item);
 }
 
 pub fn gesture_cancel(app: &AppHandle) {
@@ -184,20 +203,13 @@ pub fn hover(app: &AppHandle, index: usize) {
 /// Commit from a click. Sets the index, activates, hides, resets — so the later
 /// Ctrl release does not double-commit. MUST run on the main thread.
 pub fn commit_index(app: &AppHandle, index: usize) {
-    let (mode, item) = {
+    let (mode, idx, item) = {
         let mut s = switcher().lock().unwrap();
         if !s.active || s.items.is_empty() {
             return;
         }
         s.selected = index.min(s.items.len() - 1);
-        let mode = s.mode;
-        (mode, s.commit())
+        (s.mode, s.selected, s.commit())
     };
-    let _ = app.emit("switcher:hide", ());
-    hide_panel(app);
-    if mode == Mode::Apps {
-        if let Some(it) = item {
-            apps::activate(it.pid);
-        }
-    }
+    perform_commit(app, mode, idx, item);
 }
