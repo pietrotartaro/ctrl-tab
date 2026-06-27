@@ -76,7 +76,7 @@ If events stop arriving after a rebuild, re-check the Accessibility list.
 - **Windows mode is the frontmost app's windows only** (not all windows of all apps).
 - **No previews/thumbnails** — windows show the app icon + the window title.
 - **Shortcuts** are configurable in Settings and persist to
-  `~/Library/Application Support/com.pietrotartaro.ctltab/config.json`. The icon size
+  `~/Library/Application Support/com.pietro.alttabclone/config.json`. The icon size
   is the compile-time `ICON_SIZE` in `src/App.tsx` (keep `ITEM_W` in
   `src-tauri/src/controller.rs` in sync).
 - **Backward (Shift) direction** assumes the recorded combo does not itself include
