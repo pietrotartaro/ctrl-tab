@@ -55,18 +55,21 @@ tap if the **responsible process** is trusted for Accessibility:
    - In `npm run tauri dev`, the responsible process is your **terminal** (the one
      that launched the app) — enable that.
    - For a bundled build, enable **ctl-tab**.
-3. Restart the app.
 
-On launch the app calls `AXIsProcessTrustedWithOptions` with the system prompt; if it
-isn't trusted it prints instructions and the gesture simply won't fire.
+On first launch the app calls `AXIsProcessTrustedWithOptions` with the system prompt.
+You can grant it **while the app is running** — it polls for the permission and the
+shortcuts start working automatically within ~2s, **no restart needed**.
 
 It requires **Accessibility only** — **no Screen Recording**.
 
 ### TCC note for development
 
-Trust is keyed to the binary path / code signature, so a fresh `target/debug/ctl-tab`
-inherits trust from the launching terminal (which is why you grant the terminal in dev).
-If events stop arriving after a rebuild, re-check the Accessibility list.
+Trust is keyed to the binary's code signature (cdhash). Because the build is
+**ad-hoc signed**, every rebuild changes the cdhash and **invalidates the previous
+Accessibility grant** — after reinstalling a new build you must re-grant Accessibility
+to ctl-tab (remove the stale entry and re-add it if the toggle looks on but doesn't
+work). In `npm run tauri dev`, the dev binary inherits trust from the launching
+terminal, so granting the terminal is enough there.
 
 > `screencapture` (used only for dev screenshots, not by the app) needs **Screen
 > Recording** for the terminal — unrelated to ctl-tab's own permissions.

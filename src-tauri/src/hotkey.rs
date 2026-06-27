@@ -10,6 +10,8 @@
 
 use std::ffi::c_void;
 use std::ptr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
@@ -18,6 +20,9 @@ use core_foundation::string::{CFString, CFStringRef as CFCfStringRef};
 use tauri::AppHandle;
 
 use crate::controller;
+
+/// Set once the event tap is successfully created + wired.
+static TAP_INSTALLED: AtomicBool = AtomicBool::new(false);
 
 // ---- Opaque C pointer aliases ----
 type CFMachPortRef = *mut c_void;
@@ -72,7 +77,13 @@ extern "C" {
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
+    fn AXIsProcessTrusted() -> bool;
     static kAXTrustedCheckOptionPrompt: CFStringRef;
+}
+
+/// Whether the process is currently trusted for Accessibility (no prompt).
+fn process_trusted() -> bool {
+    unsafe { AXIsProcessTrusted() }
 }
 
 /// State handed to the callback through the refcon pointer. Lives for the app's
@@ -128,22 +139,26 @@ pub fn ensure_accessibility() -> bool {
         if trusted {
             crate::dlog!("[ctl-tab] Accessibility granted.");
         } else {
-            eprintln!("[ctl-tab] Accessibility NOT granted — the CGEventTap will receive NO events.");
+            eprintln!("[ctl-tab] Accessibility NOT granted yet — shortcuts are inactive.");
             eprintln!("[ctl-tab] Grant it in System Settings → Privacy & Security → Accessibility:");
             eprintln!("[ctl-tab]   • in `tauri dev`, enable the host terminal app (it owns the process);");
             eprintln!("[ctl-tab]   • for a bundled build, enable \"ctl-tab\".");
-            eprintln!("[ctl-tab] Then restart the app.");
+            eprintln!("[ctl-tab] The app will start working automatically once granted (no restart needed).");
         }
         trusted
     }
 }
 
-/// Create the event tap, wire it to the main run loop, and enable it.
-/// Must run on the main thread (Tauri's setup does).
-pub fn install_event_tap(app: AppHandle) {
+/// Try to create the event tap, wire it to the main run loop, and enable it.
+/// Returns true on success. Must run on the main thread. Idempotent: no-op once
+/// installed. Fails (returns false) if the process isn't Accessibility-trusted.
+fn try_install_tap(app: &AppHandle) -> bool {
+    if TAP_INSTALLED.load(Ordering::SeqCst) {
+        return true;
+    }
     unsafe {
         let state = Box::new(TapState {
-            app,
+            app: app.clone(),
             tap: ptr::null_mut(),
         });
         let state_ptr = Box::into_raw(state);
@@ -159,20 +174,50 @@ pub fn install_event_tap(app: AppHandle) {
         );
 
         if tap.is_null() {
-            eprintln!("[ctl-tab] failed to create CGEventTap (is Accessibility granted?)");
-            drop(Box::from_raw(state_ptr)); // reclaim on failure
-            return;
+            drop(Box::from_raw(state_ptr)); // reclaim; will retry later
+            return false;
         }
 
         (*state_ptr).tap = tap;
-
         let source = CFMachPortCreateRunLoopSource(ptr::null(), tap, 0);
         CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
         CGEventTapEnable(tap, true);
 
+        TAP_INSTALLED.store(true, Ordering::SeqCst);
         crate::dlog!(
             "[ctl-tab] CGEventTap installed (session tap, head-insert, keyDown+flagsChanged, active)."
         );
         // state_ptr / tap / source intentionally leaked for the app's lifetime.
+        true
     }
+}
+
+/// Install the event tap. If the app isn't Accessibility-trusted yet (the normal
+/// first-launch case), poll in the background and install as soon as the user
+/// grants the permission — no manual relaunch required.
+pub fn install_event_tap(app: AppHandle) {
+    if try_install_tap(&app) {
+        return;
+    }
+    eprintln!("[ctl-tab] event tap not installed yet — waiting for Accessibility to be granted…");
+
+    std::thread::spawn(move || {
+        // Poll for up to ~30 minutes; stop as soon as the tap is installed.
+        for _ in 0..1200 {
+            if TAP_INSTALLED.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1500));
+            if !process_trusted() {
+                continue;
+            }
+            let app = app.clone();
+            // Tap creation + run-loop wiring must happen on the main thread.
+            let _ = app.clone().run_on_main_thread(move || {
+                if !TAP_INSTALLED.load(Ordering::SeqCst) && try_install_tap(&app) {
+                    eprintln!("[ctl-tab] Accessibility granted — shortcuts are now active.");
+                }
+            });
+        }
+    });
 }

@@ -201,6 +201,11 @@ fn advance(app: &AppHandle, delta: isize) {
 fn perform_commit(app: &AppHandle, mode: Mode, index: usize, item: Option<AppItem>) {
     let _ = app.emit("switcher:hide", ());
     hide_panel(app);
+    // Drop to Accessory so we're not the active app — otherwise (e.g. the Settings
+    // window is open under Regular) NSRunningApplication activation returns false and
+    // the target app/window won't come forward.
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     match mode {
         Mode::Apps => {
             if let Some(it) = item {

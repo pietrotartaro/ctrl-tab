@@ -75,6 +75,7 @@ fn set_accessory(app: &AppHandle, accessory: bool) {
 
 fn show_settings(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
+        // Regular so the window comes to the front and can take focus.
         #[cfg(target_os = "macos")]
         set_accessory(app, false);
         let _ = w.show();
@@ -86,6 +87,7 @@ fn hide_settings(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
         let _ = w.hide();
     }
+    // Back to background (no Dock icon); also lets switch activation work.
     #[cfg(target_os = "macos")]
     set_accessory(app, true);
 }
@@ -259,7 +261,7 @@ pub fn run() {
                     }
                 });
             }
-            // Opened from the launcher → show Settings (Regular for focus/keys).
+            // Opened from the launcher → show Settings.
             show_settings(handle);
 
             // Native gesture pipeline.

@@ -170,11 +170,10 @@ pub fn frontmost() -> Option<(i32, String)> {
     Some((app.processIdentifier(), nsstring_to_string(app.localizedName())))
 }
 
-/// Activate the app with the given pid, bringing it to the front.
+/// Activate the app with the given pid, bringing it to the front. The caller drops
+/// us to Accessory first so we're not the active app (otherwise activation fails).
 pub fn activate(pid: i32) {
     if let Some(app) = running_app(pid) {
-        // On macOS 14+ `ActivateIgnoringOtherApps` has no effect; ActivateAllWindows
-        // brings the app and all its windows forward.
         let ok = app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
         crate::dlog!("[ctl-tab] activate pid={pid} -> {ok}");
     } else {
