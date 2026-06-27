@@ -118,7 +118,7 @@ impl Switcher {
             .get(self.selected)
             .map(|a| a.name.as_str())
             .unwrap_or("<empty>");
-        eprintln!(
+        crate::dlog!(
             "[ctl-tab] gesture_start  mode={:<7} items={} selected={} -> {}",
             mode.label(),
             self.items.len(),
@@ -126,7 +126,7 @@ impl Switcher {
             name
         );
         for (i, a) in self.items.iter().enumerate() {
-            eprintln!(
+            crate::dlog!(
                 "[ctl-tab]   [{}] pid={:<6} {}{}",
                 i,
                 a.pid,
@@ -147,7 +147,7 @@ impl Switcher {
             .get(self.selected)
             .map(|a| a.name.as_str())
             .unwrap_or("<empty>");
-        eprintln!(
+        crate::dlog!(
             "[ctl-tab] advance        mode={:<7} dir={:+} selected={}/{} -> {}",
             self.mode.label(),
             delta.signum(),
@@ -165,14 +165,14 @@ impl Switcher {
         }
         let item = self.items.get(self.selected).cloned();
         match &item {
-            Some(a) => eprintln!(
+            Some(a) => crate::dlog!(
                 "[ctl-tab] commit         mode={:<7} selected={} pid={} {}",
                 self.mode.label(),
                 self.selected,
                 a.pid,
                 a.name
             ),
-            None => eprintln!(
+            None => crate::dlog!(
                 "[ctl-tab] commit         mode={:<7} selected={} <empty>",
                 self.mode.label(),
                 self.selected
@@ -187,7 +187,7 @@ impl Switcher {
         if !self.active {
             return;
         }
-        eprintln!(
+        crate::dlog!(
             "[ctl-tab] cancel         mode={:<7} selected={}",
             self.mode.label(),
             self.selected
@@ -336,5 +336,35 @@ mod tests {
         let apps = vec![item(1, "A"), item(2, "B")];
         let out = order_by_mru(apps, &[99, 2]);
         assert_eq!(out, vec![item(2, "B"), item(1, "A")]);
+    }
+
+    // ---- smoke test: the pure pipeline the native app-list build uses ----
+
+    #[test]
+    fn eligible_then_mru_ordered_pipeline() {
+        let own_pid = 42;
+        let raw_apps = vec![
+            raw(1, "Safari", true),
+            raw(2, "menubar-agent", false), // dropped (not regular)
+            raw(3, "Notes", true),
+            raw(42, "ctl-tab", true), // dropped (own pid)
+            raw(4, "Mail", true),
+        ];
+        let mru = vec![4, 1]; // Mail most recent, then Safari
+
+        let items: Vec<AppItem> = filter_eligible(raw_apps, own_pid)
+            .into_iter()
+            .map(|r| AppItem {
+                pid: r.pid,
+                name: r.name,
+            })
+            .collect();
+        let ordered = order_by_mru(items, &mru);
+
+        // MRU first (Mail, Safari), then the rest in enumeration order (Notes).
+        assert_eq!(
+            ordered,
+            vec![item(4, "Mail"), item(1, "Safari"), item(3, "Notes")]
+        );
     }
 }

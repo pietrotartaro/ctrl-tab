@@ -149,7 +149,7 @@ pub fn enumerate(pid: i32) -> Vec<String> {
     st.owner_pid = pid;
     st.windows = wins;
 
-    eprintln!("[ctl-tab] windows: enumerated {} for pid={}", titles.len(), pid);
+    crate::dlog!("[ctl-tab] windows: enumerated {} for pid={}", titles.len(), pid);
     titles
 }
 
@@ -171,9 +171,9 @@ pub fn raise(index: usize) {
                     truth.as_concrete_TypeRef() as CFTypeRef,
                 );
             }
-            eprintln!("[ctl-tab] windows: raised index={index}");
+            crate::dlog!("[ctl-tab] windows: raised index={index}");
         } else {
-            eprintln!("[ctl-tab] windows: raise index={index} out of range");
+            crate::dlog!("[ctl-tab] windows: raise index={index} out of range");
         }
         st.owner_pid
     };

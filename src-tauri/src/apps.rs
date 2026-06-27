@@ -139,7 +139,7 @@ pub fn build_ordered_apps() -> Vec<AppItem> {
             .filter(|a| state.icon_cache.contains_key(&a.pid))
             .count()
     };
-    eprintln!(
+    crate::dlog!(
         "[ctl-tab] built {} apps, {} icons resolved (mru-ordered)",
         ordered.len(),
         resolved
@@ -176,9 +176,9 @@ pub fn activate(pid: i32) {
         // On macOS 14+ `ActivateIgnoringOtherApps` has no effect; ActivateAllWindows
         // brings the app and all its windows forward.
         let ok = app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
-        eprintln!("[ctl-tab] activate pid={pid} -> {ok}");
+        crate::dlog!("[ctl-tab] activate pid={pid} -> {ok}");
     } else {
-        eprintln!("[ctl-tab] activate pid={pid} -> app not found");
+        crate::dlog!("[ctl-tab] activate pid={pid} -> app not found");
     }
 }
 
@@ -209,5 +209,5 @@ pub fn install_workspace_observer() {
     };
     // Keep the observer alive for the app's lifetime.
     std::mem::forget(token);
-    eprintln!("[ctl-tab] NSWorkspace activation observer installed.");
+    crate::dlog!("[ctl-tab] NSWorkspace activation observer installed.");
 }

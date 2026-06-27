@@ -1,9 +1,8 @@
-// ctl-tab — macOS Alt-Tab clone. Phase 0: foundations.
+// ctl-tab — macOS Alt-Tab clone (Tauri v2, single Rust binary).
 //
-// This phase wires up a transparent, non-activating NSPanel overlay via
-// tauri-nspanel (branch v2.1), sets the app to Accessory (no Dock icon),
-// and exposes show_overlay / hide_overlay test commands. No hotkeys or
-// native switching logic yet.
+// A background utility: Ctrl-Tab switches apps, Ctrl-§ switches windows of the
+// frontmost app. The overlay is a transparent, non-activating NSPanel
+// (tauri-nspanel). The app runs as Accessory (no Dock icon). See CLAUDE.md.
 
 mod apps;
 mod controller;
@@ -12,14 +11,33 @@ mod hotkey;
 mod switcher;
 mod windows;
 
-// These two traits must be in scope (unqualified) for the panel! macro expansion.
+use std::sync::OnceLock;
 
+// These traits must be in scope (unqualified) for the panel! macro expansion.
 use objc2::runtime::NSObjectProtocol;
 use objc2::{ClassType, Message};
 use tauri::{AppHandle, Manager, WebviewUrl};
-use tauri_nspanel::{
-    panel, CollectionBehavior, ManagerExt, PanelBuilder, PanelLevel, StyleMask,
-};
+use tauri_nspanel::{panel, CollectionBehavior, PanelBuilder, PanelLevel, StyleMask};
+
+/// Whether verbose diagnostic logging is enabled (env `CTL_TAB_DEBUG=1`).
+pub(crate) fn debug_enabled() -> bool {
+    static D: OnceLock<bool> = OnceLock::new();
+    *D.get_or_init(|| {
+        std::env::var("CTL_TAB_DEBUG")
+            .map(|v| !v.is_empty() && v != "0")
+            .unwrap_or(false)
+    })
+}
+
+/// `eprintln!` only when `CTL_TAB_DEBUG` is set. Use for diagnostics.
+#[macro_export]
+macro_rules! dlog {
+    ($($arg:tt)*) => {
+        if $crate::debug_enabled() {
+            eprintln!($($arg)*);
+        }
+    };
+}
 
 // Define the concrete NSPanel subclass used for the overlay. It can become the
 // key window so the webview inside it receives mouse/keyboard events even though
@@ -32,34 +50,14 @@ panel!(OverlayPanel {
 
 const OVERLAY_LABEL: &str = "overlay";
 
-/// Show the overlay panel. Runs on the main thread (NSPanel is main-thread only).
-#[tauri::command]
-fn show_overlay(app: AppHandle) -> Result<(), String> {
-    let panel = app
-        .get_webview_panel(OVERLAY_LABEL)
-        .map_err(|e| format!("overlay panel not found: {e:?}"))?;
-    app.run_on_main_thread(move || panel.show())
-        .map_err(|e| e.to_string())
-}
-
-/// Hide the overlay panel. Runs on the main thread.
-#[tauri::command]
-fn hide_overlay(app: AppHandle) -> Result<(), String> {
-    let panel = app
-        .get_webview_panel(OVERLAY_LABEL)
-        .map_err(|e| format!("overlay panel not found: {e:?}"))?;
-    app.run_on_main_thread(move || panel.hide())
-        .map_err(|e| e.to_string())
-}
-
 /// Mouse hover over a switcher item: update selection + re-emit `switcher:select`.
 #[tauri::command]
 fn switcher_hover(app: AppHandle, index: usize) {
     controller::hover(&app, index);
 }
 
-/// Mouse click on a switcher item: set index, activate, hide overlay, reset state
-/// (so the later Ctrl release does not double-commit). Runs on the main thread.
+/// Mouse click on a switcher item: set index, activate/raise, hide overlay, reset
+/// state (so the later Ctrl release does not double-commit). Runs on the main thread.
 #[tauri::command]
 fn switcher_commit(app: AppHandle, index: usize) -> Result<(), String> {
     let app2 = app.clone();
@@ -114,12 +112,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_nspanel::init())
-        .invoke_handler(tauri::generate_handler![
-            show_overlay,
-            hide_overlay,
-            switcher_hover,
-            switcher_commit
-        ])
+        .invoke_handler(tauri::generate_handler![switcher_hover, switcher_commit])
         .setup(|app| {
             // Background utility: no Dock icon, no menu bar.
             #[cfg(target_os = "macos")]

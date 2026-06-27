@@ -130,7 +130,7 @@ pub fn gesture_start(app: &AppHandle, mode: Mode) {
     };
     // Nothing to switch between → don't show the overlay (gesture stays inactive).
     if items.is_empty() {
-        eprintln!("[ctl-tab] gesture_start {}: no items, not showing", mode.label());
+        crate::dlog!("[ctl-tab] gesture_start {}: no items, not showing", mode.label());
         return;
     }
     let selected = if items.len() > 1 { 1 } else { 0 };

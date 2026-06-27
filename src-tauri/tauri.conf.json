@@ -11,14 +11,7 @@
   },
   "app": {
     "macOSPrivateApi": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "ctl-tab (dev controls)",
-        "width": 480,
-        "height": 320
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

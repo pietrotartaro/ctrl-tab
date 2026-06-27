@@ -78,8 +78,8 @@ navigation with Tab / Shift+Tab, mouse selection (hover + click).
 - `switcher_commit(index)` — set the index, commit (activate app/window), hide the
   overlay, reset state.
 
-> The contract above is implemented as of Phase 3. `show_overlay` / `hide_overlay`
-> remain as Phase-0 dev buttons (show the empty overlay) and are harmless.
+> The contract above is fully implemented. The Phase-0 dev window and
+> `show_overlay` / `hide_overlay` commands were removed in Phase 5.
 
 ## TDD policy (from the session Preludio)
 
@@ -118,7 +118,8 @@ missing" — for that code a unit test is not required.
 - `src-tauri/src/windows.rs` — frontmost app's window enumeration + raising via
   raw Accessibility FFI (AXUIElementCreateApplication / CopyAttributeValue /
   PerformAction). Stores the AX window refs in the same order as the switcher list.
-- `src/App.tsx` — the overlay React UI (Alt-Tab style) + the dev-controls view.
+- `src/App.tsx` — the overlay React UI (Alt-Tab style); the only window. Icon size
+  is the `ICON_SIZE` constant (keep `ITEM_W` in `controller.rs` in sync).
 - `src-tauri/examples/post_keys.rs` — test harness that posts real CGEvents
   (`CGEventPost`) to drive the gesture for verification. Run with `tauri dev` up:
   `cargo run --example post_keys -- <apps-fwd|apps-back|windows|esc|probe>`.
@@ -234,3 +235,26 @@ underneath (it is consumed). Automated equivalent: the `post_keys` example above
   - § key code is `KEY_SECTION = 10` (ISO) in `hotkey.rs` — remap there if needed.
   - Apps mode and windows mode are independent (verified: Ctrl+Tab still app-switches
     after using Ctrl+§).
+
+- **2026-06-27 (Phase 5 — polish, MVP complete):**
+  - Removed the Phase-0 dev window (`tauri.conf.json` `windows: []`) and the
+    `show_overlay`/`hide_overlay` commands + DevControls UI. The app is now purely
+    background: 0 visible windows when idle, not in the Dock.
+  - Diagnostic logging is gated behind `CTL_TAB_DEBUG=1` via the `dlog!` macro +
+    `debug_enabled()` (lib.rs). Actionable messages (Accessibility NOT granted, tap
+    creation failure) stay unconditional. Verified silent without the flag.
+  - Icon size is the `ICON_SIZE` constant in `src/App.tsx` (`ITEM_BOX` must equal
+    `controller.rs` `ITEM_W`). Many apps: the item row is `overflow-x-auto` and the
+    panel width is clamped to the screen width.
+  - Added a smoke test composing `filter_eligible` → `order_by_mru` (the native
+    app-list pipeline). 18 lib tests total.
+  - Runtime-verified end to end: Tab/Shift nav + mouse hover/click in both modes,
+    no double-commit (click then Ctrl-release = one commit), Esc cancels without
+    activating, mouse leaving the panel keeps the last hovered selection (release
+    commits it), Ctrl+Tab vs Ctrl+§ independent, background-only.
+  - Code-handled but NOT force-tested at runtime (documented honestly): event-tap
+    auto-recovery on `DisabledByTimeout/ByUserInput`; app-dies-mid-gesture
+    (`activate` logs "app not found", `raise` no-ops on stale refs — no panic);
+    no-eligible-apps (overlay not shown); missing icon (frontend placeholder);
+    multi-monitor centering (single display available here — the code centers on the
+    NSScreen containing the mouse).

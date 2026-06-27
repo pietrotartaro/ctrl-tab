@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 
-// Both the dev-controls window ("main") and the overlay NSPanel ("overlay")
-// load the same bundle. Branch on the window label.
-const windowLabel = getCurrentWindow().label;
+// Medium icon size (px). Keep `ITEM_W` in src-tauri/src/controller.rs in sync with
+// ITEM_BOX so the Rust-computed panel width matches the rendered row.
+const ICON_SIZE = 72;
+const ITEM_BOX = 104; // per-item button width incl. padding + gap
 
 type SwitchItem = {
   id: string;
@@ -34,7 +34,7 @@ function Overlay() {
       listen<{ selected: number }>("switcher:select", (e) => {
         setSelected(e.payload.selected);
       }),
-      // Keep the last list rendered on hide; the panel is hidden by Rust, so no
+      // On hide we keep the last list rendered; the panel is hidden by Rust, so no
       // empty flash, and the next show replaces it.
     ];
     return () => {
@@ -49,7 +49,7 @@ function Overlay() {
       <div className="flex h-full w-full flex-col gap-2 rounded-2xl border border-white/10 bg-neutral-900/60 px-5 py-4 backdrop-blur-2xl">
         {/* Selected item title */}
         <div className="truncate text-center text-[15px] font-medium leading-5 text-white/90">
-          {current ? current.title : " "}
+          {current ? current.title : " "}
         </div>
 
         {/* Row of items */}
@@ -64,21 +64,30 @@ function Overlay() {
                   invoke("switcher_hover", { index: i });
                 }}
                 onClick={() => invoke("switcher_commit", { index: i })}
+                style={{ width: ITEM_BOX }}
                 className={[
-                  "flex w-[88px] shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2 transition-colors",
+                  "flex shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2 transition-colors",
                   isSel ? "bg-white/20" : "bg-transparent hover:bg-white/5",
                 ].join(" ")}
               >
-                <div className="flex h-[72px] w-[72px] items-center justify-center">
+                <div
+                  className="flex items-center justify-center"
+                  style={{ width: ICON_SIZE, height: ICON_SIZE }}
+                >
                   {item.iconDataUrl ? (
                     <img
                       src={item.iconDataUrl}
                       alt={item.appName}
-                      className="h-[72px] w-[72px] object-contain"
+                      style={{ width: ICON_SIZE, height: ICON_SIZE }}
+                      className="object-contain"
                       draggable={false}
                     />
                   ) : (
-                    <div className="h-[64px] w-[64px] rounded-xl bg-white/10" />
+                    // Placeholder for a missing icon.
+                    <div
+                      className="rounded-xl bg-white/10"
+                      style={{ width: ICON_SIZE - 8, height: ICON_SIZE - 8 }}
+                    />
                   )}
                 </div>
                 <span className="w-full truncate text-center text-[11px] leading-tight text-white/70">
@@ -93,44 +102,7 @@ function Overlay() {
   );
 }
 
-/** Temporary controls (Phase 0) to show/hide the empty overlay by hand. */
-function DevControls() {
-  const [status, setStatus] = useState("idle");
-
-  async function run(cmd: "show_overlay" | "hide_overlay") {
-    try {
-      await invoke(cmd);
-      setStatus(`${cmd} → ok`);
-    } catch (e) {
-      setStatus(`${cmd} → error: ${String(e)}`);
-    }
-  }
-
-  return (
-    <main className="flex h-full flex-col items-center justify-center gap-4 bg-neutral-100 p-6 text-neutral-900">
-      <h1 className="text-lg font-semibold">ctl-tab — dev controls</h1>
-      <p className="text-sm text-neutral-500">
-        Hold Ctrl and tap Tab to use the real switcher overlay.
-      </p>
-      <div className="flex gap-3">
-        <button
-          onClick={() => run("show_overlay")}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 active:bg-blue-700"
-        >
-          Show overlay
-        </button>
-        <button
-          onClick={() => run("hide_overlay")}
-          className="rounded-md bg-neutral-700 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-600 active:bg-neutral-800"
-        >
-          Hide overlay
-        </button>
-      </div>
-      <code className="text-xs text-neutral-400">{status}</code>
-    </main>
-  );
-}
-
+// The only window is the overlay panel.
 export default function App() {
-  return windowLabel === "overlay" ? <Overlay /> : <DevControls />;
+  return <Overlay />;
 }

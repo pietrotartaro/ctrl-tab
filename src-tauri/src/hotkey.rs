@@ -103,7 +103,7 @@ unsafe extern "C" fn tap_callback(
 
     match etype {
         KCG_EVENT_TAP_DISABLED_BY_TIMEOUT | KCG_EVENT_TAP_DISABLED_BY_USER_INPUT => {
-            eprintln!("[ctl-tab] event tap disabled ({etype:#x}); re-enabling");
+            crate::dlog!("[ctl-tab] event tap disabled ({etype:#x}); re-enabling");
             if !state.tap.is_null() {
                 CGEventTapEnable(state.tap, true);
             }
@@ -163,7 +163,7 @@ pub fn ensure_accessibility() -> bool {
         let dict = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), value.as_CFType())]);
         let trusted = AXIsProcessTrustedWithOptions(dict.as_concrete_TypeRef() as CFDictionaryRef);
         if trusted {
-            println!("[ctl-tab] Accessibility granted.");
+            crate::dlog!("[ctl-tab] Accessibility granted.");
         } else {
             eprintln!("[ctl-tab] Accessibility NOT granted — the CGEventTap will receive NO events.");
             eprintln!("[ctl-tab] Grant it in System Settings → Privacy & Security → Accessibility:");
@@ -207,7 +207,7 @@ pub fn install_event_tap(app: AppHandle) {
         CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
         CGEventTapEnable(tap, true);
 
-        println!(
+        crate::dlog!(
             "[ctl-tab] CGEventTap installed (session tap, head-insert, keyDown+flagsChanged, active)."
         );
         // state_ptr / tap / source intentionally leaked for the app's lifetime.
