@@ -11,7 +11,17 @@
   },
   "app": {
     "macOSPrivateApi": true,
-    "windows": [],
+    "windows": [
+      {
+        "label": "settings",
+        "title": "ctl-tab — Impostazioni",
+        "width": 460,
+        "height": 300,
+        "resizable": false,
+        "visible": true,
+        "center": true
+      }
+    ],
     "security": {
       "csp": null
     }

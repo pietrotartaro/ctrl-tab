@@ -11,7 +11,11 @@ to move left. Release **Ctrl** to confirm, **Esc** to cancel. You can also **hov
 and **click** items with the mouse. An Alt-Tab-style overlay shows medium app icons
 with the selected item's title on top.
 
-The app has no Dock icon and no menu bar (it runs as a background *Accessory*).
+Both shortcuts are **configurable** in the Settings window (record a new combo per
+action). The app lives in the **menu bar** (tray): *Impostazioni…*, *Avvia al login*
+(autostart), *Esci*. It runs as a background *Accessory* (no Dock icon while the
+Settings window is closed); closing the Settings window keeps it running in the
+background. Launching it again just re-shows Settings (single instance).
 
 ## Prerequisites
 
@@ -71,11 +75,13 @@ If events stop arriving after a rebuild, re-check the Accessibility list.
 
 - **Windows mode is the frontmost app's windows only** (not all windows of all apps).
 - **No previews/thumbnails** — windows show the app icon + the window title.
-- **No persistence / preferences UI** — hotkeys and icon size are compile-time
-  constants (`KEY_SECTION` in `src-tauri/src/hotkey.rs`, `ICON_SIZE` in `src/App.tsx`
-  which must stay in sync with `ITEM_W` in `src-tauri/src/controller.rs`).
-- **No quit UI** — as a background Accessory app there's no menu; quit from the dev
-  terminal (Ctrl-C) or via Activity Monitor for a bundled build.
+- **Shortcuts** are configurable in Settings and persist to
+  `~/Library/Application Support/com.pietrotartaro.ctltab/config.json`. The icon size
+  is the compile-time `ICON_SIZE` in `src/App.tsx` (keep `ITEM_W` in
+  `src-tauri/src/controller.rs` in sync).
+- **Backward (Shift) direction** assumes the recorded combo does not itself include
+  Shift; recording a Shift-based combo disables the reverse direction.
+- Quit via the menu-bar tray → **Esci** (or Ctrl-C in the dev terminal).
 - Window order comes from the Accessibility `AXWindows` z-order; minimized windows may
   be excluded.
 - If the frontmost app has **0 windows**, the windows overlay isn't shown; with **1

@@ -109,17 +109,24 @@ missing" — for that code a unit test is not required.
 - `src-tauri/src/apps.rs` — real app enumeration (NSWorkspace), 128px PNG icon data
   URLs (cached per pid), `activate(pid)`, and the NSWorkspace activation observer
   that keeps the MRU current.
-- `src-tauri/src/controller.rs` — single source of truth for switcher state
-  (`Mutex<Switcher>`); orchestrates the contract events, panel show/size/position,
-  and activation. Driven by both the event tap (keyboard) and the Tauri commands
-  (mouse).
+- `src-tauri/src/controller.rs` — single source of truth (`Mutex<CtlState>`:
+  switcher + config + recording + active gesture modifiers). Owns the config-driven
+  key matching (`handle_key_down` / `handle_flags_changed`), recording capture, the
+  contract events, panel show/size/position, activation, and the config commands.
+- `src-tauri/src/config.rs` — shortcut config: `Combo`/`Config`, `validate_*`,
+  `format_combo_label`, key-code names, JSON load/save. Pure parts unit-tested.
 - `src-tauri/src/events.rs` — serde payload types for the switcher contract
   (camelCase field names, unit-tested).
 - `src-tauri/src/windows.rs` — frontmost app's window enumeration + raising via
   raw Accessibility FFI (AXUIElementCreateApplication / CopyAttributeValue /
   PerformAction). Stores the AX window refs in the same order as the switcher list.
-- `src/App.tsx` — the overlay React UI (Alt-Tab style); the only window. Icon size
-  is the `ICON_SIZE` constant (keep `ITEM_W` in `controller.rs` in sync).
+- `src/App.tsx` — branches on window label: the overlay React UI (Alt-Tab style,
+  icon size = `ICON_SIZE`, keep `ITEM_W` in `controller.rs` in sync) and the
+  Settings window UI (record/save/reset shortcuts).
+- `src-tauri/src/lib.rs` also owns the tray (TrayIconBuilder: Impostazioni / Avvia
+  al login / Esci), the single-instance + autostart plugins, the Settings window
+  lifecycle (CloseRequested → hide, ExitRequested → prevent unless quitting), and
+  the Accessory↔Regular activation toggle.
 - `src-tauri/examples/post_keys.rs` — test harness that posts real CGEvents
   (`CGEventPost`) to drive the gesture for verification. Run with `tauri dev` up:
   `cargo run --example post_keys -- <apps-fwd|apps-back|windows|esc|probe>`.
@@ -258,3 +265,36 @@ underneath (it is consumed). Automated equivalent: the `post_keys` example above
     no-eligible-apps (overlay not shown); missing icon (frontend placeholder);
     multi-monitor centering (single display available here — the code centers on the
     NSScreen containing the mouse).
+
+- **2026-06-27 (Phase 6 — Settings window + configurable shortcuts):**
+  - Pure (TDD): `validate_combo`/`validate_pair` (≥1 modifier + non-modifier key;
+    reject identical pair), `format_combo_label` (⌃⌥⇧⌘ order), Config JSON
+    round-trip. 27 lib tests total.
+  - Shortcuts are config-driven: the tap forwards every keyDown/flagsChanged to
+    `controller`, which matches against `Config` (modifiers+keyCode). Forward =
+    exact modifier match; backward = combo modifiers + Shift. Commit fires when the
+    combo's modifiers are no longer all held. Hot-applied (the tap reads shared
+    state), so Save takes effect without restart.
+  - Recording uses the existing tap (NOT the webview): `start_recording(action)`
+    sets a recording flag; the next keyDown with ≥1 modifier (and a non-modifier
+    key) is captured and emitted as `recording:done`. This captures the real macOS
+    keyCode (reliable for § etc.).
+  - Persistence: JSON at `app_config_dir()/config.json` (no store plugin). Loaded at
+    startup via `controller::init`; defaults if absent.
+  - Background lifecycle: tray (TrayIconBuilder) with Impostazioni / Avvia al login
+    (autostart plugin) / Esci. Settings window CloseRequested → `prevent_close` +
+    hide; ExitRequested → `prevent_exit` unless the `QUIT` flag is set (tray → Esci).
+    single-instance plugin re-shows Settings on a second launch. Activation policy:
+    Regular while Settings is visible (for focus/keys), Accessory when hidden.
+  - Deps: `tauri-plugin-single-instance`, `tauri-plugin-autostart`, tauri features
+    `tray-icon` + `image-png`.
+  - Runtime-verified: Settings opens on launch; closing it keeps the app in
+    background (background-only) with shortcuts working; record ⌃Q → Save → works
+    immediately AND persists across restart; old ⌃Tab unbinds; identical-combo Save
+    is rejected (config unchanged); single-instance re-shows Settings (2nd process
+    exits).
+  - Caveat: `activateWithOptions` returns false while Settings is open (our app is
+    Regular/foreground) — irrelevant in normal background use (verified true once
+    Settings is closed). Tray menu item clicks (Esci/autostart) are wired but were
+    not force-tested via synthetic menu-bar clicks; the ExitRequested/QUIT path and
+    autostart toggle are simple and code-verified.

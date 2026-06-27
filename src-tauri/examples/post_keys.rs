@@ -110,6 +110,14 @@ fn main() {
             thread::sleep(Duration::from_millis(3000));
             ctrl_up();
         }
+        // Ctrl + <keycode> tap+release. Used to record a combo and to test a
+        // rebound Ctrl+<key> app-switch.
+        "ctrlkey" => {
+            let kc: u16 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(48);
+            ctrl_down();
+            tap_key(kc, ctrl);
+            ctrl_up();
+        }
         // Single Ctrl+Tab+release → start(selected=1), commit(1) = previous app.
         "apps-one" => {
             ctrl_down();

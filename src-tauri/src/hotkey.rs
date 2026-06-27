@@ -18,7 +18,6 @@ use core_foundation::string::{CFString, CFStringRef as CFCfStringRef};
 use tauri::AppHandle;
 
 use crate::controller;
-use crate::switcher::Mode;
 
 // ---- Opaque C pointer aliases ----
 type CFMachPortRef = *mut c_void;
@@ -42,15 +41,6 @@ const KCG_EVENT_FLAGS_CHANGED: u32 = 12;
 const KCG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
 const KCG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
 const KCG_KEYBOARD_EVENT_KEYCODE: u32 = 9; // kCGKeyboardEventKeycode
-
-// CGEventFlags masks
-const MASK_CONTROL: u64 = 0x0004_0000; // kCGEventFlagMaskControl
-const MASK_SHIFT: u64 = 0x0002_0000; // kCGEventFlagMaskShift
-
-// macOS virtual key codes
-const KEY_TAB: i64 = 48;
-const KEY_SECTION: i64 = 10; // ISO § / ± key
-const KEY_ESC: i64 = 53;
 
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
@@ -112,43 +102,16 @@ unsafe extern "C" fn tap_callback(
         KCG_EVENT_KEY_DOWN => {
             let flags = CGEventGetFlags(event);
             let keycode = CGEventGetIntegerValueField(event, KCG_KEYBOARD_EVENT_KEYCODE);
-            let ctrl = flags & MASK_CONTROL != 0;
-            let shift = flags & MASK_SHIFT != 0;
-
-            if ctrl && (keycode == KEY_TAB || keycode == KEY_SECTION) {
-                let mode = if keycode == KEY_TAB {
-                    Mode::Apps
-                } else {
-                    Mode::Windows
-                };
-                if shift {
-                    controller::gesture_advance(&state.app, -1);
-                } else if !controller::is_active() {
-                    controller::gesture_start(&state.app, mode);
-                } else {
-                    controller::gesture_advance(&state.app, 1);
-                }
-                // Consume Tab/§ so they never reach the app underneath.
-                if controller::is_active() {
-                    return ptr::null_mut();
-                }
-                return event;
-            }
-
-            if keycode == KEY_ESC && controller::is_active() {
-                controller::gesture_cancel(&state.app);
+            // All matching (config-driven combos + recording capture) lives in the
+            // controller; it tells us whether to consume the key.
+            if controller::handle_key_down(&state.app, keycode, flags) {
                 return ptr::null_mut();
             }
-
             event
         }
         KCG_EVENT_FLAGS_CHANGED => {
             let flags = CGEventGetFlags(event);
-            let ctrl = flags & MASK_CONTROL != 0;
-            // Ctrl released while active → confirm the selection and activate it.
-            if !ctrl && controller::is_active() {
-                controller::gesture_commit(&state.app);
-            }
+            controller::handle_flags_changed(&state.app, flags);
             event
         }
         _ => event,
