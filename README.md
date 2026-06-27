@@ -93,3 +93,33 @@ See [CLAUDE.md](./CLAUDE.md) for the full architecture, the Rust→frontend even
 contract, and per-phase decisions. In short: one Rust process owns the event tap, the
 app/window enumeration (objc2 / raw AX FFI), the NSPanel overlay (tauri-nspanel), and
 the activation; the React frontend only renders the overlay from emitted events.
+
+## Creare e installare il .dmg (Apple Silicon)
+
+1. **Build:**
+
+   ```bash
+   npm run tauri build
+   ```
+
+2. **Output:**
+   - `.dmg`: `src-tauri/target/release/bundle/dmg/ctl-tab_0.1.0_aarch64.dmg`
+   - `.app`: `src-tauri/target/release/bundle/macos/ctl-tab.app`
+
+3. **Installazione:** apri il `.dmg` e trascina `ctl-tab.app` in `/Applications`.
+
+4. **Primo avvio** (app non notarizzata): tasto destro sull'app → **Apri** → **Apri**.
+   Se Gatekeeper la blocca comunque, rimuovi la quarantena:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/ctl-tab.app
+   ```
+
+5. **Permessi:** concedi **Accessibility** all'app **installata** (Impostazioni di
+   sistema → Privacy e sicurezza → Accessibilità) — è separata dal binario di
+   sviluppo. Se i tasti non arrivano, abilita anche **Monitoraggio input** (Input
+   Monitoring) per l'app.
+
+6. **Nota:** l'app gira in **background** (icona nel menu bar); chiudendo la finestra
+   Impostazioni resta attiva. Di default le shortcut sono **Ctrl+Tab** (app) e
+   **Ctrl+§** (finestre), modificabili dalle Impostazioni.
