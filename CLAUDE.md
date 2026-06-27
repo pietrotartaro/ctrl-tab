@@ -28,8 +28,9 @@ navigation with Tab / Shift+Tab, mouse selection (hover + click).
   `resizable(false)`, `no_activate(true)`, `level Floating`, collection behavior
   `can_join_all_spaces` + `ignores_cycle`, `ignoresMouseEvents = false`.
 - Hotkeys: native **CGEventTap** (NOT the global-shortcut plugin). [Phase 1 ✓]
-- Native macOS via `objc2` / `objc2-app-kit`. Window enumeration, titles and
-  raising via the **Accessibility API**. [Phase ≥2]
+- App list/icons/activation via `objc2-app-kit` (NSWorkspace / NSRunningApplication
+  / NSImage). [Phase 2 ✓] Window enumeration, titles and raising via the
+  **Accessibility API**. [Phase ≥3]
 - Permissions: **Accessibility only. No Screen Recording.**
 
 > **Accessibility is mandatory for the hotkey.** An active CGEventTap on
@@ -103,7 +104,11 @@ missing" — for that code a unit test is not required.
 - `src-tauri/src/switcher.rs` — pure `wrapping_advance` (unit-tested) + `Switcher`
   state/logging glue.
 - `src-tauri/src/hotkey.rs` — CGEventTap FFI, extern "C" callback, Accessibility
-  check.
+  check. On apps gesture_start it builds the real list via `apps::build_ordered_apps`
+  and on commit calls `apps::activate`.
+- `src-tauri/src/apps.rs` — real app enumeration (NSWorkspace), 128px PNG icon data
+  URLs (cached per pid), `activate(pid)`, and the NSWorkspace activation observer
+  that keeps the MRU current.
 - `src-tauri/examples/post_keys.rs` — test harness that posts real CGEvents
   (`CGEventPost`) to drive the gesture for verification. Run with `tauri dev` up:
   `cargo run --example post_keys -- <apps-fwd|apps-back|windows|esc|probe>`.
@@ -157,3 +162,25 @@ underneath (it is consumed). Automated equivalent: the `post_keys` example above
     example). This bit us during verification.
   - `wrapping_advance` covered by 6 unit tests (TDD); the tap/gesture is gated by
     manual acceptance criteria per the TDD policy.
+
+- **2026-06-27 (Phase 2):**
+  - Real app data: `filter_eligible` (.regular, excl. own pid), `promote_mru`,
+    `order_by_mru` are pure + unit-tested (15 lib tests total). Native
+    enumeration/icons/activation/observer in `apps.rs` are acceptance-gated.
+  - MRU is kept by an `addObserverForName:NSWorkspaceDidActivateApplicationNotification`
+    block observer; on each activation it promotes `frontmostApplication`'s pid.
+    `build_ordered_apps` also promotes the current frontmost so index 0 = current,
+    index 1 = previous. Initial `selected = min(1, len-1)` → a single Ctrl+Tap+release
+    jumps to the previous app.
+  - Icons: `NSImage::imageWithSize_flipped_drawingHandler` (NOT the deprecated
+    `lockFocus`) → 128px, TIFF → `NSBitmapImageRep` → PNG → base64 data URL, cached
+    per pid in a process-global `Mutex<AppState>`.
+  - Activation: `activateWithOptions(ActivateAllWindows)` only —
+    `ActivateIgnoringOtherApps` is a no-op on macOS 14+.
+  - objc2 notes: `NSImage::alloc` needs `objc2::AnyThread` in scope; the block
+    observer needs `block2` as a direct dep; most NSWorkspace/NSRunningApplication
+    accessors are safe (no `unsafe`), only `representationUsingType:properties:` and
+    `addObserverForName:…` need `unsafe`.
+  - Deps added: `block2`, `base64`.
+  - Windows mode (Ctrl+§) still uses a stub list; real windows arrive in a later
+    phase. `post_keys` gained an `apps-one` scenario (single Ctrl+Tab+release).

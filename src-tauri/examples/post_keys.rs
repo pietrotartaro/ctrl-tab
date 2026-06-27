@@ -64,7 +64,13 @@ fn main() {
             tap_key(KC_TAB, ctrl);
             ctrl_up();
         }
-        // Ctrl held, Tab x3 forward, release → start, +1, +1, +1, commit(3).
+        // Single Ctrl+Tab+release → start(selected=1), commit(1) = previous app.
+        "apps-one" => {
+            ctrl_down();
+            tap_key(KC_TAB, ctrl);
+            ctrl_up();
+        }
+        // Ctrl held, Tab x3 forward, release → start(1), +1, +1, commit(3).
         "apps-fwd" => {
             ctrl_down();
             tap_key(KC_TAB, ctrl);

@@ -6,6 +6,7 @@
 // native switching logic yet.
 
 // These two traits must be in scope (unqualified) for the panel! macro expansion.
+mod apps;
 mod hotkey;
 mod switcher;
 
@@ -100,10 +101,12 @@ pub fn run() {
 
             create_overlay(app.handle())?;
 
-            // Native gesture pipeline (Phase 1): check Accessibility, install the tap.
+            // Native gesture pipeline: check Accessibility, observe app activations
+            // for MRU, install the event tap.
             #[cfg(target_os = "macos")]
             {
                 hotkey::ensure_accessibility();
+                apps::install_workspace_observer();
                 hotkey::install_event_tap();
             }
 

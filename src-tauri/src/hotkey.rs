@@ -121,10 +121,22 @@ unsafe extern "C" fn tap_callback(
                 };
                 if shift {
                     state.switcher.advance(-1);
+                } else if !state.switcher.active {
+                    let items = match mode {
+                        Mode::Apps => crate::apps::build_ordered_apps(),
+                        // Windows mode is populated in a later phase; keep a stub list.
+                        Mode::Windows => (0..5)
+                            .map(|i| crate::switcher::AppItem {
+                                pid: -(i as i32),
+                                name: format!("window-{i}"),
+                            })
+                            .collect(),
+                    };
+                    // Start on the previous item (index 1) so a single Ctrl+Tap+release
+                    // jumps to the last-used app.
+                    let selected = if items.len() > 1 { 1 } else { 0 };
+                    state.switcher.start(mode, items, selected);
                 } else {
-                    if !state.switcher.active {
-                        state.switcher.start(mode);
-                    }
                     state.switcher.advance(1);
                 }
                 // Consume Tab/§ so they never reach the app underneath.
@@ -144,9 +156,14 @@ unsafe extern "C" fn tap_callback(
         KCG_EVENT_FLAGS_CHANGED => {
             let flags = CGEventGetFlags(event);
             let ctrl = flags & MASK_CONTROL != 0;
-            // Ctrl released while active → confirm the selection.
+            // Ctrl released while active → confirm the selection and activate it.
             if !ctrl && state.switcher.active {
-                state.switcher.commit();
+                let mode = state.switcher.mode;
+                if let Some(item) = state.switcher.commit() {
+                    if mode == Mode::Apps {
+                        crate::apps::activate(item.pid);
+                    }
+                }
             }
             event
         }
