@@ -27,10 +27,33 @@ navigation with Tab / Shift+Tab, mouse selection (hover + click).
   `decorations(false)`, `always_on_top(true)`, `skip_taskbar(true)`,
   `resizable(false)`, `no_activate(true)`, `level Floating`, collection behavior
   `can_join_all_spaces` + `ignores_cycle`, `ignoresMouseEvents = false`.
-- Hotkeys: native **CGEventTap** (NOT the global-shortcut plugin). [Phase ≥1]
+- Hotkeys: native **CGEventTap** (NOT the global-shortcut plugin). [Phase 1 ✓]
 - Native macOS via `objc2` / `objc2-app-kit`. Window enumeration, titles and
   raising via the **Accessibility API**. [Phase ≥2]
 - Permissions: **Accessibility only. No Screen Recording.**
+
+> **Accessibility is mandatory for the hotkey.** An active CGEventTap on
+> `kCGSessionEventTap` only receives events if the responsible process is trusted
+> for Accessibility. Without it the tap installs but sees **no** events (no gesture
+> works). In `tauri dev` the responsible process is the host terminal — grant
+> Accessibility to the terminal; for a bundled build, grant it to `ctl-tab`. The
+> app calls `AXIsProcessTrustedWithOptions` with the prompt at startup and logs
+> instructions if untrusted.
+
+### Gesture (Phase 1)
+
+- Modifier = **Ctrl** (`kCGEventFlagMaskControl`). Virtual key codes: Tab = 48,
+  ISO § = 10, Esc = 53, left Ctrl = 59.
+- Ctrl+Tab → apps mode; Ctrl+§ → windows mode. First press starts the switcher
+  (selected = 0) **and** advances +1; subsequent presses advance. Shift reverses
+  direction (advance −1). Releasing Ctrl (flagsChanged without Control) commits;
+  Esc cancels. While active, Tab/§ keyDowns are **consumed** (callback returns
+  `NULL`) so they never reach the app underneath.
+- The tap is active (`kCGEventTapOptionDefault`), head-insert, session-level, on
+  the main run loop (`CFRunLoopGetMain`). It re-enables itself on
+  `kCGEventTapDisabledByTimeout` / `ByUserInput`.
+- Phase 1 only logs diagnostics (to **stderr**) over a fake 5-item list — no real
+  app/window enumeration yet.
 
 ## Switcher state contract (used across phases)
 
@@ -76,9 +99,26 @@ missing" — for that code a unit test is not required.
 
 - `src/` — React/TS frontend (`App.tsx` branches on window label).
 - `src-tauri/src/lib.rs` — Tauri app: plugin registration, overlay creation,
-  commands, activation policy.
+  commands, activation policy, gesture pipeline setup.
+- `src-tauri/src/switcher.rs` — pure `wrapping_advance` (unit-tested) + `Switcher`
+  state/logging glue.
+- `src-tauri/src/hotkey.rs` — CGEventTap FFI, extern "C" callback, Accessibility
+  check.
+- `src-tauri/examples/post_keys.rs` — test harness that posts real CGEvents
+  (`CGEventPost`) to drive the gesture for verification. Run with `tauri dev` up:
+  `cargo run --example post_keys -- <apps-fwd|apps-back|windows|esc|probe>`.
 - `src-tauri/tauri.conf.json` — windows (`main` dev-controls window), `macOSPrivateApi`.
 - `src-tauri/capabilities/default.json` — capabilities for `main` + `overlay`.
+
+### How to test the gesture by hand
+
+With Accessibility granted, hold **Ctrl** and tap **Tab** repeatedly: the stderr log
+shows `gesture_start` then `advance dir=+1` with the index climbing; **Shift+Tab**
+goes `dir=-1`; release **Ctrl** → `commit`. **Ctrl+§** drives `windows` mode. **Esc**
+while active → `cancel`. While active, Tab does not change tabs/fields in the app
+underneath (it is consumed). Automated equivalent: the `post_keys` example above
+(AppleScript/System Events synthetic keys do NOT reach the tap — only real input or
+`CGEventPost`).
 
 ## Decisions log
 
@@ -100,3 +140,20 @@ missing" — for that code a unit test is not required.
     separate hidden window. Both load the same bundle and branch on label.
   - `objc2` / `objc2-app-kit` added as direct deps (needed now by the macro, and by
     later native phases).
+
+- **2026-06-27 (Phase 1):**
+  - CGEventTap implemented with raw FFI (extern "C" callback, state via the
+    `userInfo` refcon pointer, returns `NULL` to consume) rather than the
+    `core-graphics` safe `CGEventTap` wrapper, to match the spec's exact control
+    requirements. `core-foundation` is used for the `AXIsProcessTrustedWithOptions`
+    options dictionary; `core-graphics` is used by the `post_keys` test harness.
+  - Deps added: `objc2-foundation`, `core-foundation`, `core-graphics`.
+  - The Ctrl modifier key release is detected as a `flagsChanged` event (not a
+    keyUp) — that is what drives `commit`.
+  - Diagnostic logs go to **stderr** (`eprintln!`): unbuffered, so they appear
+    immediately when stdout is a pipe (Rust block-buffers piped stdout).
+  - **System Events / AppleScript synthetic key events are NOT seen by the session
+    event tap.** Verify with real keystrokes or `CGEventPost` (the `post_keys`
+    example). This bit us during verification.
+  - `wrapping_advance` covered by 6 unit tests (TDD); the tap/gesture is gated by
+    manual acceptance criteria per the TDD policy.

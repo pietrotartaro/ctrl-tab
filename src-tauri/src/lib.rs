@@ -6,6 +6,9 @@
 // native switching logic yet.
 
 // These two traits must be in scope (unqualified) for the panel! macro expansion.
+mod hotkey;
+mod switcher;
+
 use objc2::runtime::NSObjectProtocol;
 use objc2::{ClassType, Message};
 use tauri::{AppHandle, Manager, WebviewUrl};
@@ -96,6 +99,14 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             create_overlay(app.handle())?;
+
+            // Native gesture pipeline (Phase 1): check Accessibility, install the tap.
+            #[cfg(target_os = "macos")]
+            {
+                hotkey::ensure_accessibility();
+                hotkey::install_event_tap();
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
