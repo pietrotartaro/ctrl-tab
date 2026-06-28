@@ -34,6 +34,14 @@ function Overlay() {
   const mouseActive = useRef(false);
   const baseline = useRef<{ x: number; y: number } | null>(null);
   const lastHover = useRef(-1);
+  // Custom hover tooltip (the native `title` tooltip does NOT render on a
+  // non-activating background panel — see decisions log). Separate fixed-position
+  // layer: out of flow, no reflow, panel size/gap unchanged.
+  const [tip, setTip] = useState<{ text: string; mx: number; my: number } | null>(null);
+  const tipRef = useRef<HTMLDivElement | null>(null);
+  // Latest items, read by the (mount-only) pointermove handler without stale closure.
+  const itemsRef = useRef<SwitchItem[]>([]);
+  itemsRef.current = items;
 
   useEffect(() => {
     const unlisten = [
@@ -44,6 +52,7 @@ function Overlay() {
         mouseActive.current = false;
         baseline.current = null;
         lastHover.current = e.payload.selected;
+        setTip(null);
       }),
       listen<{ selected: number }>("switcher:select", (e) => {
         setSelected(e.payload.selected);
@@ -51,6 +60,7 @@ function Overlay() {
       listen("switcher:hide", () => {
         mouseActive.current = false;
         baseline.current = null;
+        setTip(null);
       }),
     ];
     return () => {
@@ -89,9 +99,15 @@ function Overlay() {
       const el = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest(
         "[data-idx]",
       ) as HTMLElement | null;
-      if (!el) return;
+      if (!el) {
+        setTip(null);
+        return;
+      }
       const i = Number(el.dataset.idx);
-      if (i === lastHover.current) return; // only on selection change
+      // Tooltip follows the cursor every move (full, untruncated label).
+      const full = itemsRef.current[i]?.appName ?? "";
+      setTip({ text: full, mx: e.clientX, my: e.clientY });
+      if (i === lastHover.current) return; // selection only changes across items
       lastHover.current = i;
       setSelected(i);
       invoke("switcher_hover", { index: i });
@@ -105,10 +121,28 @@ function Overlay() {
     };
   }, []);
 
+  // Position + clamp the tooltip within the overlay window (which is exactly the
+  // panel size). Runs pre-paint so there is no flash at the default origin.
+  useLayoutEffect(() => {
+    const el = tipRef.current;
+    if (!el || !tip) return;
+    const M = 4;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    let left = tip.mx - w / 2; // centered above the cursor
+    let top = tip.my - h - 12;
+    if (top < M) top = tip.my + 16; // no room above → below the cursor
+    left = Math.max(M, Math.min(left, window.innerWidth - w - M));
+    top = Math.max(M, Math.min(top, window.innerHeight - h - M));
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+  }, [tip]);
+
   return (
-    // The window is Rust-sized to the content; the dark-glass panel fills it and
-    // wraps the icon grid onto multiple rows at the window width — never scrolls.
-    // No centered title; each item keeps its own label below the icon.
+    <>
+    {/* The window is Rust-sized to the content; the dark-glass panel fills it and
+    wraps the icon grid onto multiple rows at the window width — never scrolls.
+    No centered title; each item keeps its own label below the icon. */}
     <div className="ctl-panel flex h-screen w-screen flex-wrap content-center justify-center gap-1 p-3 select-none">
       {items.map((item, i) => {
         const isSel = i === selected;
@@ -116,6 +150,8 @@ function Overlay() {
           <button
             key={item.id}
             data-idx={i}
+            // Full label shown via the custom hover tooltip (see `tip`). The native
+            // `title` tooltip does NOT render on this non-activating background panel.
             // Commit on pointer DOWN for ANY button so a Ctrl+click (secondary
             // click, since Ctrl is held) still opens the app; preventDefault stops
             // the context menu. Commit resets state, so the Ctrl release won't
@@ -162,6 +198,16 @@ function Overlay() {
         );
       })}
     </div>
+    {tip && tip.text && (
+      <div
+        ref={tipRef}
+        className="ctl-tip pointer-events-none fixed z-50 max-w-[calc(100vw-8px)] rounded-md border border-white/10 bg-black/85 px-2 py-1 text-xs leading-snug text-white/95 shadow-lg break-words whitespace-normal"
+        style={{ left: 0, top: 0 }}
+      >
+        {tip.text}
+      </div>
+    )}
+    </>
   );
 }
 
