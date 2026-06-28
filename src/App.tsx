@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -29,6 +29,7 @@ type ShowPayload = {
 function Overlay() {
   const [items, setItems] = useState<SwitchItem[]>([]);
   const [selected, setSelected] = useState(0);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
     const unlisten = [
@@ -45,20 +46,31 @@ function Overlay() {
     };
   }, []);
 
+  // Keep the selected item visible (scrollbar is hidden via CSS). No smooth
+  // animation — instant.
+  useEffect(() => {
+    itemRefs.current[selected]?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [selected, items]);
+
   const current = items[selected];
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-transparent p-1.5 select-none">
-      <div className="flex h-full w-full flex-col gap-2 rounded-2xl border border-white/10 bg-neutral-900/60 px-5 py-4 backdrop-blur-2xl">
-        <div className="truncate text-center text-[15px] font-medium leading-5 text-white/90">
+      {/* Solid, fully opaque panel (no blur / no transparency). The Tauri window is
+          transparent only so the rounded corners show. */}
+      <div className="flex h-full w-full flex-col gap-2 rounded-2xl bg-[#1E1E20] px-5 py-4">
+        <div className="truncate text-center text-[15px] font-medium leading-5 text-white">
           {current ? current.title : " "}
         </div>
-        <div className="flex flex-1 items-center justify-center gap-1 overflow-x-auto">
+        <div className="no-scrollbar flex flex-1 items-center justify-center gap-1 overflow-x-auto">
           {items.map((item, i) => {
             const isSel = i === selected;
             return (
               <button
                 key={item.id}
+                ref={(el) => {
+                  itemRefs.current[i] = el;
+                }}
                 onMouseEnter={() => {
                   setSelected(i);
                   invoke("switcher_hover", { index: i });
@@ -66,8 +78,9 @@ function Overlay() {
                 onClick={() => invoke("switcher_commit", { index: i })}
                 style={{ width: ITEM_BOX }}
                 className={[
-                  "flex shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2 transition-colors",
-                  isSel ? "bg-white/20" : "bg-transparent hover:bg-white/5",
+                  "flex shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2",
+                  // Solid highlight color (not an opacity change).
+                  isSel ? "bg-[#3A3A3D]" : "bg-transparent",
                 ].join(" ")}
               >
                 <div
@@ -84,12 +97,12 @@ function Overlay() {
                     />
                   ) : (
                     <div
-                      className="rounded-xl bg-white/10"
+                      className="rounded-xl bg-[#3A3A3D]"
                       style={{ width: ICON_SIZE - 8, height: ICON_SIZE - 8 }}
                     />
                   )}
                 </div>
-                <span className="w-full truncate text-center text-[11px] leading-tight text-white/70">
+                <span className="w-full truncate text-center text-[11px] leading-tight text-neutral-300">
                   {item.appName}
                 </span>
               </button>

@@ -54,6 +54,8 @@ struct CtlState {
     recording: Option<Action>,
     /// Modifier flags required by the active gesture (for release → commit).
     active_mods: u64,
+    /// Previous Shift state, to detect rising edges (left navigation).
+    prev_shift: bool,
 }
 
 fn state() -> &'static Mutex<CtlState> {
@@ -65,6 +67,7 @@ fn state() -> &'static Mutex<CtlState> {
             config_path: None,
             recording: None,
             active_mods: 0,
+            prev_shift: false,
         })
     })
 }
@@ -166,7 +169,7 @@ fn window_items() -> Vec<AppItem> {
 
 // ---- gesture internals (main thread) ----
 
-fn start(app: &AppHandle, mode: Mode, required_mods: u64) {
+fn start(app: &AppHandle, mode: Mode, required_mods: u64, from_left: bool) {
     let items = match mode {
         Mode::Apps => apps::build_ordered_apps(),
         Mode::Windows => window_items(),
@@ -175,7 +178,14 @@ fn start(app: &AppHandle, mode: Mode, required_mods: u64) {
         crate::dlog!("[ctl-tab] start {}: no items, not showing", mode.label());
         return;
     }
-    let selected = if items.len() > 1 { 1 } else { 0 };
+    // Right: select the previous item (index 1). Left: wrap to the last item.
+    let selected = if from_left {
+        items.len() - 1
+    } else if items.len() > 1 {
+        1
+    } else {
+        0
+    };
 
     let payload = {
         let mut s = state().lock().unwrap();
@@ -269,36 +279,63 @@ pub fn handle_key_down(app: &AppHandle, keycode: i64, flags: u64) -> bool {
     }
 
     let cfg = state().lock().unwrap().config.clone();
-    let Some((action, delta)) = match_combo(&cfg, keycode, mods) else {
+    // The trigger key (Tab / §) always moves the selection RIGHT. Left movement is
+    // handled by a Shift rising edge in handle_flags_changed.
+    let Some(action) = match_trigger(&cfg, keycode, mods) else {
         return false;
     };
 
     if !active {
-        // Start only on the forward direction (no extra Shift).
-        if delta > 0 {
-            let combo = combo_for(&cfg, action);
-            start(app, action.mode(), combo.modifiers);
-        } else {
-            return false; // backward while idle: ignore, don't consume
-        }
+        let combo = combo_for(&cfg, action);
+        start(app, action.mode(), combo.modifiers, false);
     } else {
-        advance(app, delta);
+        advance(app, 1);
     }
 
     state().lock().unwrap().switcher.active
 }
 
 pub fn handle_flags_changed(app: &AppHandle, flags: u64) {
-    let (active, active_mods) = {
-        let s = state().lock().unwrap();
-        (s.switcher.active, s.active_mods)
+    let shift_now = flags & MOD_SHIFT != 0;
+    let mods = flags & MODS_ALL;
+
+    let (active, active_mods, prev_shift, recording, app_mods) = {
+        let mut s = state().lock().unwrap();
+        let prev = s.prev_shift;
+        s.prev_shift = shift_now; // always track the latest Shift state
+        (
+            s.switcher.active,
+            s.active_mods,
+            prev,
+            s.recording.is_some(),
+            s.config.switch_app.modifiers,
+        )
     };
+
+    if recording {
+        return;
+    }
+
+    let shift_rising = shift_now && !prev_shift;
+
     if active {
-        let mods = flags & MODS_ALL;
-        // Commit once the required modifiers are no longer all held.
+        // Commit once the hold modifiers are no longer all held (e.g. Ctrl released).
         if (mods & active_mods) != active_mods {
             commit(app);
+            return;
         }
+        // Shift rising edge → move LEFT (only when the hold modifier isn't Shift).
+        if shift_rising && active_mods & MOD_SHIFT == 0 {
+            advance(app, -1);
+        }
+    } else if shift_rising
+        && app_mods & MOD_SHIFT == 0
+        && app_mods != 0
+        && (mods & app_mods) == app_mods
+    {
+        // Idle + hold modifier (e.g. Ctrl) held + Shift pressed → open apps mode,
+        // selecting the item to the left (wrap-around).
+        start(app, Mode::Apps, app_mods, true);
     }
 }
 
@@ -309,17 +346,24 @@ fn combo_for(cfg: &Config, action: Action) -> &Combo {
     }
 }
 
-/// Match a keyDown against the config. Returns (action, direction) where +1 is
-/// forward and -1 is backward (combo modifiers + Shift).
-fn match_combo(cfg: &Config, keycode: i64, mods: u64) -> Option<(Action, isize)> {
+/// Match a trigger keyDown (Tab / §) against the config. Returns the action whose
+/// shortcut is satisfied. The key always means "move right"; Shift no longer
+/// affects the key's direction. For a custom combo that itself includes Shift, the
+/// previous exact-match behavior is kept.
+fn match_trigger(cfg: &Config, keycode: i64, mods: u64) -> Option<Action> {
     for action in [Action::SwitchApp, Action::SwitchWindows] {
         let combo = combo_for(cfg, action);
-        if keycode == combo.key_code {
+        if keycode != combo.key_code || combo.modifiers == 0 {
+            continue;
+        }
+        if combo.modifiers & MOD_SHIFT != 0 {
+            // Legacy: Shift-containing combo → require an exact modifier match.
             if mods == combo.modifiers {
-                return Some((action, 1));
-            } else if mods == combo.modifiers | MOD_SHIFT {
-                return Some((action, -1));
+                return Some(action);
             }
+        } else if (mods & combo.modifiers) == combo.modifiers {
+            // Normal: all hold modifiers present (extra Shift is ignored here).
+            return Some(action);
         }
     }
     None

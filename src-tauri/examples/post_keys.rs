@@ -21,6 +21,7 @@ const KC_TAB: u16 = 48;
 const KC_SECTION: u16 = 10;
 const KC_ESC: u16 = 53;
 const KC_LCTRL: u16 = 59;
+const KC_LSHIFT: u16 = 56;
 
 fn src() -> CGEventSource {
     CGEventSource::new(CGEventSourceStateID::HIDSystemState).expect("event source")
@@ -51,6 +52,17 @@ fn ctrl_up() {
 fn tap_key(keycode: u16, flags: CGEventFlags) {
     key(keycode, true, flags);
     key(keycode, false, flags);
+    pause();
+}
+
+/// One full Shift press while Ctrl is held: rising edge (Ctrl+Shift) then release
+/// (Ctrl). Each call is one "move left".
+fn shift_press_while_ctrl() {
+    let ctrl = CGEventFlags::CGEventFlagControl;
+    let ctrl_shift = CGEventFlags::CGEventFlagControl | CGEventFlags::CGEventFlagShift;
+    key(KC_LSHIFT, true, ctrl_shift); // Shift down → flagsChanged 0→1
+    pause();
+    key(KC_LSHIFT, false, ctrl); // Shift up → flagsChanged (Ctrl still held)
     pause();
 }
 
@@ -108,6 +120,31 @@ fn main() {
                 tap_key(KC_SECTION, ctrl);
             }
             thread::sleep(Duration::from_millis(3000));
+            ctrl_up();
+        }
+        // Ctrl held: Tab (right), Tab (right), Shift (left), Shift (left), release.
+        // Expect: start→1, +1→2, -1→1, -1→0, commit(0).
+        "leftnav" => {
+            ctrl_down();
+            tap_key(KC_TAB, ctrl);
+            tap_key(KC_TAB, ctrl);
+            shift_press_while_ctrl();
+            shift_press_while_ctrl();
+            ctrl_up();
+        }
+        // Windows mode: Ctrl held, § (right), then Shift (left), release.
+        // Expect: gesture_start windows→1, +1→0(wrap or 2), -1 back, commit.
+        "winleft" => {
+            ctrl_down();
+            tap_key(KC_SECTION, ctrl); // start windows → selected 1
+            tap_key(KC_SECTION, ctrl); // → right
+            shift_press_while_ctrl(); // → left
+            ctrl_up();
+        }
+        // Idle → Ctrl held + Shift (no Tab) opens apps mode going LEFT (wrap), release.
+        "shiftopen" => {
+            ctrl_down();
+            shift_press_while_ctrl();
             ctrl_up();
         }
         // Ctrl + <keycode> tap+release. Used to record a combo and to test a
