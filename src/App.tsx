@@ -129,9 +129,8 @@ function Overlay() {
     const M = 4;
     const w = el.offsetWidth;
     const h = el.offsetHeight;
-    let left = tip.mx - w / 2; // centered above the cursor
-    let top = tip.my - h - 12;
-    if (top < M) top = tip.my + 16; // no room above → below the cursor
+    let left = tip.mx - w / 2; // centered under the cursor
+    let top = tip.my + 16; // always below the cursor
     left = Math.max(M, Math.min(left, window.innerWidth - w - M));
     top = Math.max(M, Math.min(top, window.innerHeight - h - M));
     el.style.left = `${left}px`;
