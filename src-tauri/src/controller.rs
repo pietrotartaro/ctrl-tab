@@ -194,9 +194,21 @@ fn window_items() -> Vec<AppItem> {
         return Vec::new();
     };
     apps::ensure_icon(pid);
+    // VS Code only: reorder window titles from "file — project" to "project — file".
+    let is_vscode = apps::bundle_id(pid)
+        .as_deref()
+        .map(windows::is_vscode_bundle)
+        .unwrap_or(false);
     windows::enumerate(pid)
         .into_iter()
-        .map(|title| AppItem { pid, name: title })
+        .map(|title| {
+            let name = if is_vscode {
+                windows::reorder_vscode_title(&title)
+            } else {
+                title
+            };
+            AppItem { pid, name }
+        })
         .collect()
 }
 

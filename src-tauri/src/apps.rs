@@ -170,6 +170,12 @@ pub fn frontmost() -> Option<(i32, String)> {
     Some((app.processIdentifier(), nsstring_to_string(app.localizedName())))
 }
 
+/// The bundle identifier of the app with the given pid (e.g. "com.microsoft.VSCode").
+pub fn bundle_id(pid: i32) -> Option<String> {
+    let app = running_app(pid)?;
+    app.bundleIdentifier().map(|s| s.to_string())
+}
+
 /// Activate the app with the given pid, bringing it to the front. The caller drops
 /// us to Accessory first so we're not the active app (otherwise activation fails).
 pub fn activate(pid: i32) {

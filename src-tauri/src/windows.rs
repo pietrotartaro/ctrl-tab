@@ -56,6 +56,31 @@ extern "C" {
     fn CFRelease(cf: CFTypeRef);
 }
 
+/// VS Code's default window-title segment separator (em dash with spaces).
+const VSCODE_SEP: &str = " — ";
+
+/// Bundle identifiers of VS Code (stable + Insiders).
+pub fn is_vscode_bundle(bundle_id: &str) -> bool {
+    matches!(bundle_id, "com.microsoft.VSCode" | "com.microsoft.VSCodeInsiders")
+}
+
+/// Reorder a VS Code window title from "file — project" to "project — file"
+/// (swap the first two " — " segments).
+///
+/// Pure string logic. VS Code's AX window title is "file — project" (the app name
+/// is NOT part of the AX title), so 2 segments is the normal case. If the title
+/// has fewer than 2 segments (e.g. no folder open → just the file name, or a
+/// custom title that doesn't match), it is returned unchanged.
+pub fn reorder_vscode_title(title: &str) -> String {
+    let mut parts: Vec<&str> = title.split(VSCODE_SEP).collect();
+    if parts.len() >= 2 {
+        parts.swap(0, 1);
+        parts.join(VSCODE_SEP)
+    } else {
+        title.to_string()
+    }
+}
+
 /// A retained AX window element. Only ever touched on the main thread.
 struct AxWin(AXUIElementRef);
 unsafe impl Send for AxWin {}
@@ -179,4 +204,59 @@ pub fn raise(index: usize) {
     };
     // Bring the owning app forward so the raised window is actually focused.
     crate::apps::activate(owner);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reorders_two_segments_file_project() {
+        // The real VS Code AXTitle is "file — project" (no trailing app name).
+        assert_eq!(
+            reorder_vscode_title("boost.json — backend"),
+            "backend — boost.json"
+        );
+        assert_eq!(
+            reorder_vscode_title("App.tsx (Working Tree) (App.tsx) — ctl-tab"),
+            "ctl-tab — App.tsx (Working Tree) (App.tsx)"
+        );
+    }
+
+    #[test]
+    fn single_segment_unchanged() {
+        // No folder open: title is just the file → fallback, unchanged.
+        assert_eq!(reorder_vscode_title("Untitled-1"), "Untitled-1");
+    }
+
+    #[test]
+    fn reorders_three_segments_swaps_first_two() {
+        // Defensive: if a trailing segment ever appears, still file<->project only.
+        assert_eq!(
+            reorder_vscode_title("a — b — c"),
+            "b — a — c"
+        );
+    }
+
+    #[test]
+    fn no_separator_unchanged() {
+        assert_eq!(reorder_vscode_title("PlainTitle"), "PlainTitle");
+    }
+
+    #[test]
+    fn unsaved_marker_stays_on_file_segment() {
+        // The ● dirty marker rides along with the file segment.
+        assert_eq!(
+            reorder_vscode_title("● app.tsx — my-project"),
+            "my-project — ● app.tsx"
+        );
+    }
+
+    #[test]
+    fn recognizes_vscode_bundle_ids() {
+        assert!(is_vscode_bundle("com.microsoft.VSCode"));
+        assert!(is_vscode_bundle("com.microsoft.VSCodeInsiders"));
+        assert!(!is_vscode_bundle("com.jetbrains.PhpStorm"));
+        assert!(!is_vscode_bundle(""));
+    }
 }
