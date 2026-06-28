@@ -132,6 +132,17 @@ fn main() {
             shift_press_while_ctrl();
             ctrl_up();
         }
+        // Post <keycode> with arbitrary modifier flags: `flagstap <flagsInt> <kc>`.
+        // Control=262144 Shift=131072 Option=524288 Command=1048576 (hyper=1966080).
+        "flagstap" => {
+            let flags_int: u64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let kc: u16 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(48);
+            let f = CGEventFlags::from_bits_truncate(flags_int);
+            key(kc, true, f);
+            pause();
+            key(kc, false, f);
+            pause();
+        }
         // A single Ctrl+Tab tap (no Ctrl up/down) to inject an advance during a hold.
         "taponly" => {
             tap_key(KC_TAB, ctrl);

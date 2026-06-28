@@ -87,6 +87,19 @@ pub fn key_name(kc: i64) -> String {
     s.to_string()
 }
 
+/// Whether the currently-held standard modifiers "arm" the shortcut.
+///
+/// `current_mods_masked` must already be masked to the four standard modifiers
+/// (Shift/Control/Option/Command); `hold_mods` is the action's hold modifiers
+/// WITHOUT Shift (e.g. just Control for the defaults).
+///
+/// Shift is ignored (left-navigation uses it); any other extra modifier
+/// (Option/Command) makes this false. Returns true only on an EXACT match of the
+/// non-Shift modifier set.
+pub fn is_armed(current_mods_masked: u64, hold_mods: u64) -> bool {
+    (current_mods_masked & MODS_ALL & !MOD_SHIFT) == hold_mods
+}
+
 /// Format a combo as e.g. "⌃⇧Tab". Modifier order: ⌃⌥⇧⌘.
 pub fn format_combo_label(modifiers: u64, key_code: i64) -> String {
     let mut s = String::new();
@@ -130,6 +143,42 @@ pub fn validate_pair(app: &Combo, win: &Combo) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const HYPERKEY: u64 = MOD_SHIFT | MOD_CONTROL | MOD_OPTION | MOD_COMMAND;
+
+    #[test]
+    fn armed_control_only() {
+        assert!(is_armed(MOD_CONTROL, MOD_CONTROL));
+    }
+
+    #[test]
+    fn armed_control_plus_shift_is_still_armed() {
+        // Shift is ignored (it drives left-navigation).
+        assert!(is_armed(MOD_CONTROL | MOD_SHIFT, MOD_CONTROL));
+    }
+
+    #[test]
+    fn not_armed_with_option_or_command() {
+        assert!(!is_armed(MOD_CONTROL | MOD_OPTION, MOD_CONTROL));
+        assert!(!is_armed(MOD_CONTROL | MOD_COMMAND, MOD_CONTROL));
+    }
+
+    #[test]
+    fn not_armed_with_hyperkey() {
+        assert!(!is_armed(HYPERKEY, MOD_CONTROL));
+    }
+
+    #[test]
+    fn not_armed_without_hold_modifier() {
+        assert!(!is_armed(0, MOD_CONTROL)); // nothing held
+        assert!(!is_armed(MOD_SHIFT, MOD_CONTROL)); // only shift
+    }
+
+    #[test]
+    fn armed_ignores_device_specific_and_lock_bits() {
+        // Caps Lock (0x10000) + a device-specific low bit must be masked off.
+        assert!(is_armed(MOD_CONTROL | 0x1_0000 | 0x1, MOD_CONTROL));
+    }
 
     #[test]
     fn label_single_modifier() {

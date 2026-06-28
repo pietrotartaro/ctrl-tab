@@ -348,7 +348,7 @@ pub fn handle_flags_changed(app: &AppHandle, flags: u64) {
     let shift_now = flags & MOD_SHIFT != 0;
     let mods = flags & MODS_ALL;
 
-    let (active, active_mods, prev_shift, recording, app_mods) = {
+    let (active, active_mods, prev_shift, recording) = {
         let mut s = state().lock().unwrap();
         let prev = s.prev_shift;
         s.prev_shift = shift_now; // always track the latest Shift state
@@ -357,34 +357,26 @@ pub fn handle_flags_changed(app: &AppHandle, flags: u64) {
             s.active_mods,
             prev,
             s.recording.is_some(),
-            s.config.switch_app.modifiers,
         )
     };
 
-    if recording {
+    if recording || !active {
+        // Shift rising edge while idle does NOTHING — the switcher only opens via the
+        // real trigger (Ctrl+Tab / Ctrl+§), never via Ctrl+Shift.
         return;
     }
 
-    let shift_rising = shift_now && !prev_shift;
+    // Commit once the hold modifiers are no longer all held (e.g. Ctrl released).
+    if (mods & active_mods) != active_mods {
+        commit(app);
+        return;
+    }
 
-    if active {
-        // Commit once the hold modifiers are no longer all held (e.g. Ctrl released).
-        if (mods & active_mods) != active_mods {
-            commit(app);
-            return;
-        }
-        // Shift rising edge → move LEFT (only when the hold modifier isn't Shift).
-        if shift_rising && active_mods & MOD_SHIFT == 0 {
-            advance(app, -1);
-        }
-    } else if shift_rising
-        && app_mods & MOD_SHIFT == 0
-        && app_mods != 0
-        && (mods & app_mods) == app_mods
-    {
-        // Idle + hold modifier (e.g. Ctrl) held + Shift pressed → open apps mode,
-        // selecting the item to the left (wrap-around).
-        start(app, Mode::Apps, app_mods, true);
+    // Shift rising edge → move LEFT, but only while exactly armed (so extra
+    // Option/Command don't navigate) and when the hold modifier isn't Shift.
+    let shift_rising = shift_now && !prev_shift;
+    if shift_rising && active_mods & MOD_SHIFT == 0 && config::is_armed(mods, active_mods) {
+        advance(app, -1);
     }
 }
 
@@ -395,23 +387,22 @@ fn combo_for(cfg: &Config, action: Action) -> &Combo {
     }
 }
 
-/// Match a trigger keyDown (Tab / §) against the config. Returns the action whose
-/// shortcut is satisfied. The key always means "move right"; Shift no longer
-/// affects the key's direction. For a custom combo that itself includes Shift, the
-/// previous exact-match behavior is kept.
+/// Match a trigger keyDown (Tab / §) against the config — only when the held
+/// modifiers EXACTLY arm the action (Shift ignored; Option/Command disqualify).
+/// The key always means "move right". A custom combo that itself includes Shift
+/// keeps the previous exact-match behavior.
 fn match_trigger(cfg: &Config, keycode: i64, mods: u64) -> Option<Action> {
     for action in [Action::SwitchApp, Action::SwitchWindows] {
         let combo = combo_for(cfg, action);
         if keycode != combo.key_code || combo.modifiers == 0 {
             continue;
         }
-        if combo.modifiers & MOD_SHIFT != 0 {
-            // Legacy: Shift-containing combo → require an exact modifier match.
-            if mods == combo.modifiers {
-                return Some(action);
-            }
-        } else if (mods & combo.modifiers) == combo.modifiers {
-            // Normal: all hold modifiers present (extra Shift is ignored here).
+        let armed = if combo.modifiers & MOD_SHIFT != 0 {
+            mods == combo.modifiers // shift is part of the hold → exact match
+        } else {
+            config::is_armed(mods, combo.modifiers)
+        };
+        if armed {
             return Some(action);
         }
     }
