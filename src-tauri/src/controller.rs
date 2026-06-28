@@ -18,11 +18,34 @@ use crate::{apps, windows};
 
 const OVERLAY_LABEL: &str = "overlay";
 
-// Panel layout (logical points). ITEM_W must equal ITEM_BOX in src/App.tsx.
-const ITEM_W: f64 = 104.0;
-const H_PAD: f64 = 28.0;
-const PANEL_H: f64 = 196.0;
-const MIN_W: f64 = 260.0;
+// Margin (logical points) kept free on each side of the active screen; the panel
+// never grows wider/taller than (screen - 2*MARGIN).
+const SCREEN_MARGIN: f64 = 80.0;
+
+// Panel layout constants (logical px). Must match src/App.tsx exactly so the
+// Rust-computed panel size matches the rendered flex-wrap layout.
+const ITEM_BOX: f64 = 104.0; // per-item width
+const GRID_GAP: f64 = 4.0; // gap-1 between items/rows
+const H_PAD: f64 = 20.0; // px-5
+const V_PAD: f64 = 16.0; // py-4
+const COL_GAP: f64 = 8.0; // gap-2 (title ↔ grid)
+const TITLE_H: f64 = 20.0; // title line (leading-5)
+const ITEM_H: f64 = 105.0; // per-item height (icon + name + padding)
+
+/// Compute the panel content size for `count` uniform items, wrapping at `max_w`.
+fn compute_panel_size(count: usize, max_w: f64) -> (f64, f64) {
+    let count = count.max(1) as f64;
+    let inner_max = (max_w - 2.0 * H_PAD).max(ITEM_BOX);
+    let per_row = (((inner_max + GRID_GAP) / (ITEM_BOX + GRID_GAP)).floor())
+        .clamp(1.0, count);
+    let rows = (count / per_row).ceil();
+    let content_w = per_row * ITEM_BOX + (per_row - 1.0) * GRID_GAP;
+    // +2px slack so a row that is exactly content-wide doesn't wrap on sub-pixel
+    // rounding (which would push items onto an extra, clipped row).
+    let w = content_w + 2.0 * H_PAD + 2.0;
+    let h = 2.0 * V_PAD + TITLE_H + COL_GAP + rows * ITEM_H + (rows - 1.0) * GRID_GAP;
+    (w, h)
+}
 
 /// The two configurable actions.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -109,14 +132,14 @@ fn panel(app: &AppHandle) -> Option<tauri_nspanel::PanelHandle<tauri::Wry>> {
     app.get_webview_panel(OVERLAY_LABEL).ok()
 }
 
-fn position_and_size_panel(app: &AppHandle, item_count: usize) {
-    let Some(p) = panel(app) else { return };
-    let Some(mtm) = MainThreadMarker::new() else { return };
-
+/// Frame of the screen that currently holds the mouse (fallback: main screen).
+fn active_screen_frame() -> NSRect {
+    let default = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1440.0, 900.0));
+    let Some(mtm) = MainThreadMarker::new() else {
+        return default;
+    };
     let mouse = NSEvent::mouseLocation();
-    let mut screen_frame = NSScreen::mainScreen(mtm)
-        .map(|s| s.frame())
-        .unwrap_or(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1440.0, 900.0)));
+    let mut frame = NSScreen::mainScreen(mtm).map(|s| s.frame()).unwrap_or(default);
     for s in NSScreen::screens(mtm).iter() {
         let f = s.frame();
         if mouse.x >= f.origin.x
@@ -124,30 +147,41 @@ fn position_and_size_panel(app: &AppHandle, item_count: usize) {
             && mouse.y >= f.origin.y
             && mouse.y <= f.origin.y + f.size.height
         {
-            screen_frame = f;
+            frame = f;
             break;
         }
     }
-
-    let max_w = (screen_frame.size.width - 120.0).max(MIN_W);
-    let n = item_count.max(1) as f64;
-    let w = (H_PAD * 2.0 + n * ITEM_W).clamp(MIN_W, max_w);
-
-    let ns = p.as_panel();
-    ns.setContentSize(NSSize::new(w, PANEL_H));
-    let frame = ns.frame();
-    let origin = NSPoint::new(
-        screen_frame.origin.x + (screen_frame.size.width - frame.size.width) / 2.0,
-        screen_frame.origin.y + (screen_frame.size.height - frame.size.height) / 2.0,
-    );
-    ns.setFrameOrigin(origin);
+    frame
 }
 
-fn show_panel(app: &AppHandle) {
+/// Resize the (still hidden) panel to `w`×`h`. The webview reflows to this size so
+/// the flex-wrap layout matches before we show it. Does NOT show the panel.
+fn presize_hidden(app: &AppHandle, w: f64, h: f64) {
     if let Some(p) = panel(app) {
-        // Key (without activating our background app) so the webview gets mouse events.
-        p.make_key_and_order_front();
+        p.as_panel().setContentSize(NSSize::new(w, h));
     }
+}
+
+/// Center the (already-sized) panel on the active screen and show it (key, without
+/// activating our background app).
+fn center_and_show(app: &AppHandle) {
+    let Some(p) = panel(app) else { return };
+    let screen = active_screen_frame();
+    let ns = p.as_panel();
+    let frame = ns.frame();
+    let origin = NSPoint::new(
+        screen.origin.x + (screen.size.width - frame.size.width) / 2.0,
+        screen.origin.y + (screen.size.height - frame.size.height) / 2.0,
+    );
+    ns.setFrameOrigin(origin);
+    p.make_key_and_order_front();
+    crate::dlog!(
+        "[ctl-tab] present overlay {}x{} @ {},{}",
+        frame.size.width as i64,
+        frame.size.height as i64,
+        origin.x as i64,
+        origin.y as i64
+    );
 }
 
 fn hide_panel(app: &AppHandle) {
@@ -187,16 +221,32 @@ fn start(app: &AppHandle, mode: Mode, required_mods: u64, from_left: bool) {
         0
     };
 
+    let screen = active_screen_frame();
+    let max_w = (screen.size.width - 2.0 * SCREEN_MARGIN).max(ITEM_BOX + 2.0 * H_PAD);
+    let count = items.len();
+    let (w, h) = compute_panel_size(count, max_w);
+
     let payload = {
         let mut s = state().lock().unwrap();
         s.switcher.start(mode, items, selected);
         s.active_mods = required_mods;
         build_show_payload(&s.switcher)
     };
-    let count = payload.items.len();
+    // Size the (still hidden) panel to the Rust-computed content size so the webview
+    // reflows the flex-wrap layout to match, then emit. The frontend renders and
+    // signals readiness via present_overlay, which centers + shows it (no flicker,
+    // no per-select resize). Item widths are uniform, so the layout is deterministic.
+    presize_hidden(app, w, h);
     let _ = app.emit("switcher:show", payload);
-    position_and_size_panel(app, count);
-    show_panel(app);
+}
+
+/// Called by the frontend once it has rendered the items. Centers + shows the
+/// overlay (already sized in `start`). No-op if the gesture is no longer active.
+pub fn present_overlay(app: &AppHandle) {
+    if !state().lock().unwrap().switcher.active {
+        return;
+    }
+    center_and_show(app);
 }
 
 fn advance(app: &AppHandle, delta: isize) {

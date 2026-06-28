@@ -106,6 +106,14 @@ fn switcher_commit(app: AppHandle, index: usize) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// The overlay webview signals it has rendered; center + show it (already sized).
+#[tauri::command]
+fn present_overlay(app: AppHandle) -> Result<(), String> {
+    let app2 = app.clone();
+    app.run_on_main_thread(move || controller::present_overlay(&app2))
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn get_config() -> config::Config {
     controller::current_config()
@@ -232,6 +240,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             switcher_hover,
             switcher_commit,
+            present_overlay,
             get_config,
             start_recording,
             save_config,

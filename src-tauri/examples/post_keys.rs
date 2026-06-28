@@ -132,6 +132,10 @@ fn main() {
             shift_press_while_ctrl();
             ctrl_up();
         }
+        // A single Ctrl+Tab tap (no Ctrl up/down) to inject an advance during a hold.
+        "taponly" => {
+            tap_key(KC_TAB, ctrl);
+        }
         // Windows mode: Ctrl held, § (right), then Shift (left), release.
         // Expect: gesture_start windows→1, +1→0(wrap or 2), -1 back, commit.
         "winleft" => {

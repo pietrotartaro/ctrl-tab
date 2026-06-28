@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -7,8 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 // settings window.
 const windowLabel = getCurrentWindow().label;
 
-// Medium icon size (px). Keep ITEM_W in src-tauri/src/controller.rs in sync with
-// ITEM_BOX so the Rust-computed panel width matches the rendered row.
+// Medium icon size (px) and per-item box width.
 const ICON_SIZE = 72;
 const ITEM_BOX = 104;
 
@@ -29,7 +28,6 @@ type ShowPayload = {
 function Overlay() {
   const [items, setItems] = useState<SwitchItem[]>([]);
   const [selected, setSelected] = useState(0);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
     const unlisten = [
@@ -46,31 +44,29 @@ function Overlay() {
     };
   }, []);
 
-  // Keep the selected item visible (scrollbar is hidden via CSS). No smooth
-  // animation — instant.
-  useEffect(() => {
-    itemRefs.current[selected]?.scrollIntoView({ inline: "nearest", block: "nearest" });
-  }, [selected, items]);
+  // Once the new items are rendered, tell Rust to center + show the (already
+  // Rust-sized) overlay. NOT keyed on `selected`, so navigating never re-shows or
+  // moves the panel — the window already contains all apps.
+  useLayoutEffect(() => {
+    if (items.length === 0) return;
+    invoke("present_overlay");
+  }, [items]);
 
   const current = items[selected];
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-transparent p-1.5 select-none">
-      {/* Solid, fully opaque panel (no blur / no transparency). The Tauri window is
-          transparent only so the rounded corners show. */}
-      <div className="flex h-full w-full flex-col gap-2 rounded-2xl bg-[#1E1E20] px-5 py-4">
-        <div className="truncate text-center text-[15px] font-medium leading-5 text-white">
-          {current ? current.title : " "}
-        </div>
-        <div className="no-scrollbar flex flex-1 items-center justify-center gap-1 overflow-x-auto">
+    // The window is Rust-sized to the content; the panel fills it and wraps the icon
+    // grid onto multiple rows at the window width — never scrolls.
+    <div className="flex h-screen w-screen flex-col gap-2 rounded-2xl bg-[#1E1E20] px-5 py-4 select-none">
+      <div className="truncate text-center text-[15px] font-medium leading-5 text-white">
+        {current ? current.title : " "}
+      </div>
+      <div className="flex flex-1 flex-wrap content-center justify-center gap-1">
           {items.map((item, i) => {
             const isSel = i === selected;
             return (
               <button
                 key={item.id}
-                ref={(el) => {
-                  itemRefs.current[i] = el;
-                }}
                 onMouseEnter={() => {
                   setSelected(i);
                   invoke("switcher_hover", { index: i });
@@ -79,7 +75,6 @@ function Overlay() {
                 style={{ width: ITEM_BOX }}
                 className={[
                   "flex shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2",
-                  // Solid highlight color (not an opacity change).
                   isSel ? "bg-[#3A3A3D]" : "bg-transparent",
                 ].join(" ")}
               >
@@ -108,7 +103,6 @@ function Overlay() {
               </button>
             );
           })}
-        </div>
       </div>
     </div>
   );

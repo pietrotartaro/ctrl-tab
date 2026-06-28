@@ -9,12 +9,3 @@ body,
   height: 100%;
   background: transparent;
 }
-
-/* Hide the horizontal scrollbar on the switcher row (WebKit + standard) while
-   keeping scrollability. */
-.no-scrollbar {
-  scrollbar-width: none; /* Firefox/standard */
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none; /* WebKit (the macOS webview) */
-}
