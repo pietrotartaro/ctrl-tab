@@ -23,14 +23,13 @@ const OVERLAY_LABEL: &str = "overlay";
 const SCREEN_MARGIN: f64 = 80.0;
 
 // Panel layout constants (logical px). Must match src/App.tsx exactly so the
-// Rust-computed panel size matches the rendered flex-wrap layout.
-const ITEM_BOX: f64 = 104.0; // per-item width
+// Rust-computed panel size matches the rendered flex-wrap layout (no centered
+// title row anymore; only the wrapped icon grid).
+const ITEM_BOX: f64 = 88.0; // per-item width (icon 64 + padding/label room)
 const GRID_GAP: f64 = 4.0; // gap-1 between items/rows
-const H_PAD: f64 = 20.0; // px-5
-const V_PAD: f64 = 16.0; // py-4
-const COL_GAP: f64 = 8.0; // gap-2 (title ↔ grid)
-const TITLE_H: f64 = 20.0; // title line (leading-5)
-const ITEM_H: f64 = 105.0; // per-item height (icon + name + padding)
+const H_PAD: f64 = 12.0; // p-3 (card horizontal padding)
+const V_PAD: f64 = 12.0; // p-3 (card vertical padding)
+const ITEM_H: f64 = 98.0; // per-item height (icon 64 + name + p-2 padding)
 
 /// Compute the panel content size for `count` uniform items, wrapping at `max_w`.
 fn compute_panel_size(count: usize, max_w: f64) -> (f64, f64) {
@@ -43,7 +42,7 @@ fn compute_panel_size(count: usize, max_w: f64) -> (f64, f64) {
     // +2px slack so a row that is exactly content-wide doesn't wrap on sub-pixel
     // rounding (which would push items onto an extra, clipped row).
     let w = content_w + 2.0 * H_PAD + 2.0;
-    let h = 2.0 * V_PAD + TITLE_H + COL_GAP + rows * ITEM_H + (rows - 1.0) * GRID_GAP;
+    let h = 2.0 * V_PAD + rows * ITEM_H + (rows - 1.0) * GRID_GAP;
     (w, h)
 }
 

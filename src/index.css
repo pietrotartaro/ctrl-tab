@@ -1,11 +1,28 @@
 @import "tailwindcss";
 
-/* Transparent by default so the overlay NSPanel shows only its own content.
-   The dev-controls window paints its own opaque background in App.tsx. */
+/* Shared corner-radius token: the switcher panel and the per-item tiles use the
+   same value (≈22% of the icon size, matching the macOS icon corners). Also passed
+   to the native vibrancy radius (PANEL_RADIUS in lib.rs). */
+:root {
+  --tile-radius: 14px;
+}
+
+/* Transparent so the native vibrancy behind the overlay window shows through. */
 html,
 body,
 #root {
   margin: 0;
   height: 100%;
   background: transparent;
+}
+
+/* Dark "liquid glass" panel: a dark tint + top sheen + hairline over the native
+   vibrancy. The tint alpha is the darkness knob. No opacity changes at runtime. */
+.ctl-panel {
+  border-radius: var(--tile-radius);
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 38%),
+    rgba(22, 22, 24, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }

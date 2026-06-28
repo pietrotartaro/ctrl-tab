@@ -649,6 +649,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
+ "window-vibrancy",
 ]
 
 [[package]]

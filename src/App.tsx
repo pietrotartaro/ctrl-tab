@@ -7,9 +7,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 // settings window.
 const windowLabel = getCurrentWindow().label;
 
-// Medium icon size (px) and per-item box width.
-const ICON_SIZE = 72;
-const ITEM_BOX = 104;
+// Medium icon size (px) and per-item box width (compact). Keep in sync with the
+// matching constants in src-tauri/src/controller.rs.
+const ICON_SIZE = 64;
+const ITEM_BOX = 88;
 
 type SwitchItem = {
   id: string;
@@ -52,58 +53,57 @@ function Overlay() {
     invoke("present_overlay");
   }, [items]);
 
-  const current = items[selected];
-
   return (
-    // The window is Rust-sized to the content; the panel fills it and wraps the icon
-    // grid onto multiple rows at the window width — never scrolls.
-    <div className="flex h-screen w-screen flex-col gap-2 rounded-2xl bg-[#1E1E20] px-5 py-4 select-none">
-      <div className="truncate text-center text-[15px] font-medium leading-5 text-white">
-        {current ? current.title : " "}
-      </div>
-      <div className="flex flex-1 flex-wrap content-center justify-center gap-1">
-          {items.map((item, i) => {
-            const isSel = i === selected;
-            return (
-              <button
-                key={item.id}
-                onMouseEnter={() => {
-                  setSelected(i);
-                  invoke("switcher_hover", { index: i });
-                }}
-                onClick={() => invoke("switcher_commit", { index: i })}
-                style={{ width: ITEM_BOX }}
-                className={[
-                  "flex shrink-0 flex-col items-center gap-1 rounded-xl px-2 py-2",
-                  isSel ? "bg-[#3A3A3D]" : "bg-transparent",
-                ].join(" ")}
-              >
-                <div
-                  className="flex items-center justify-center"
+    // The window is Rust-sized to the content; the dark-glass panel fills it and
+    // wraps the icon grid onto multiple rows at the window width — never scrolls.
+    // No centered title; each item keeps its own label below the icon.
+    <div className="ctl-panel flex h-screen w-screen flex-wrap content-center justify-center gap-1 p-3 select-none">
+      {items.map((item, i) => {
+        const isSel = i === selected;
+        return (
+          <button
+            key={item.id}
+            onMouseEnter={() => {
+              setSelected(i);
+              invoke("switcher_hover", { index: i });
+            }}
+            onClick={() => invoke("switcher_commit", { index: i })}
+            style={{
+              width: ITEM_BOX,
+              borderRadius: "var(--tile-radius)",
+              background: isSel ? "rgba(255,255,255,0.16)" : "transparent",
+            }}
+            className="flex shrink-0 flex-col items-center gap-1 px-2 py-2"
+          >
+            <div
+              className="flex items-center justify-center"
+              style={{ width: ICON_SIZE, height: ICON_SIZE }}
+            >
+              {item.iconDataUrl ? (
+                <img
+                  src={item.iconDataUrl}
+                  alt={item.appName}
                   style={{ width: ICON_SIZE, height: ICON_SIZE }}
-                >
-                  {item.iconDataUrl ? (
-                    <img
-                      src={item.iconDataUrl}
-                      alt={item.appName}
-                      style={{ width: ICON_SIZE, height: ICON_SIZE }}
-                      className="object-contain"
-                      draggable={false}
-                    />
-                  ) : (
-                    <div
-                      className="rounded-xl bg-[#3A3A3D]"
-                      style={{ width: ICON_SIZE - 8, height: ICON_SIZE - 8 }}
-                    />
-                  )}
-                </div>
-                <span className="w-full truncate text-center text-[11px] leading-tight text-neutral-300">
-                  {item.appName}
-                </span>
-              </button>
-            );
-          })}
-      </div>
+                  className="object-contain"
+                  draggable={false}
+                />
+              ) : (
+                <div
+                  className="bg-white/10"
+                  style={{
+                    width: ICON_SIZE - 8,
+                    height: ICON_SIZE - 8,
+                    borderRadius: "var(--tile-radius)",
+                  }}
+                />
+              )}
+            </div>
+            <span className="w-full truncate text-center text-[11px] leading-tight text-white/85">
+              {item.appName}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -58,6 +58,8 @@ panel!(OverlayPanel {
 
 const OVERLAY_LABEL: &str = "overlay";
 const SETTINGS_LABEL: &str = "settings";
+/// Panel corner radius (px) — ~22% of the icon size; matches the CSS `--tile-radius`.
+const PANEL_RADIUS: f64 = 14.0;
 
 // ---- Settings window + activation policy ----
 
@@ -171,13 +173,28 @@ fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
                 .can_join_all_spaces()
                 .ignores_cycle(),
         )
-        .has_shadow(false)
+        .has_shadow(true) // soft drop shadow for the glass panel
         .transparent(true)
         .build()?;
 
     panel.set_ignores_mouse_events(false);
     panel.set_accepts_mouse_moved_events(true);
     panel.hide();
+
+    // Native dark vibrancy ("liquid glass") behind the transparent webview. The CSS
+    // adds the dark tint + sheen on top; the corner radius matches the CSS panel.
+    #[cfg(target_os = "macos")]
+    if let Some(win) = app.get_webview_window(OVERLAY_LABEL) {
+        use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+        if let Err(e) = apply_vibrancy(
+            &win,
+            NSVisualEffectMaterial::HudWindow,
+            Some(NSVisualEffectState::Active),
+            Some(PANEL_RADIUS),
+        ) {
+            eprintln!("[ctl-tab] vibrancy not applied: {e:?}");
+        }
+    }
     Ok(())
 }
 
