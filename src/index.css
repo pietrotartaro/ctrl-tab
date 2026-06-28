@@ -1,10 +1,33 @@
 @import "tailwindcss";
 
+/* Make the Tailwind `font-mono` utility resolve to JetBrains Mono (used by the
+   shortcut label in Settings). Settings = JetBrains Mono everywhere. */
+@theme {
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
 /* Shared corner-radius token: the switcher panel and the per-item tiles use the
    same value (≈22% of the icon size, matching the macOS icon corners). Also passed
    to the native vibrancy radius (PANEL_RADIUS in lib.rs). */
 :root {
   --tile-radius: 14px;
+
+  /* === Switcher font (REVERTIBLE in ONE line) ============================
+     The overlay/switcher text uses JetBrains Mono via THIS single variable.
+     To revert ONLY the switcher to its previous font — WITHOUT touching the
+     Settings window — change just this one line back to the previous value:
+
+       --switcher-font-family: -apple-system, system-ui, sans-serif;
+
+     (that was the switcher's font before JetBrains Mono — the default UI sans.)
+     ===================================================================== */
+  --switcher-font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Settings window: JetBrains Mono (definitive). The overlay overrides this via
+   --switcher-font-family on .ctl-panel / .ctl-tip below. */
+body {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 /* Transparent so the native vibrancy behind the overlay window shows through. */
@@ -25,4 +48,11 @@ body,
     rgba(22, 22, 24, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  /* Revert switcher font via --switcher-font-family in :root (single line). */
+  font-family: var(--switcher-font-family);
+}
+
+/* The hover tooltip lives outside .ctl-panel, so it gets the switcher font too. */
+.ctl-tip {
+  font-family: var(--switcher-font-family);
 }
