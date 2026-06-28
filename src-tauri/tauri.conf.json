@@ -14,11 +14,11 @@
     "windows": [
       {
         "label": "settings",
-        "title": "ctl-tab — Impostazioni",
+        "title": "ctl-tab — Settings",
         "width": 460,
-        "height": 300,
+        "height": 384,
         "resizable": false,
-        "visible": true,
+        "visible": false,
         "center": true
       }
     ],

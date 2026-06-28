@@ -112,7 +112,7 @@ type Combo = { modifiers: number; key_code: number; label: string };
 type Config = { switch_app: Combo; switch_windows: Combo };
 type ActionKey = "app" | "windows";
 
-/** Settings window: customize the two shortcuts. */
+/** Settings window: customize the two shortcuts, autostart, and quit. */
 function Settings() {
   const [appLabel, setAppLabel] = useState("…");
   const [winLabel, setWinLabel] = useState("…");
@@ -122,6 +122,7 @@ function Settings() {
   const [recording, setRecording] = useState<ActionKey | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [autostart, setAutostart] = useState(false);
 
   function applyConfig(cfg: Config) {
     setAppLabel(cfg.switch_app.label);
@@ -132,6 +133,7 @@ function Settings() {
 
   useEffect(() => {
     invoke<Config>("get_config").then(applyConfig).catch(() => {});
+    invoke<boolean>("get_autostart").then(setAutostart).catch(() => {});
     const un = listen<{ action: ActionKey; modifiers: number; keyCode: number; label: string }>(
       "recording:done",
       (e) => {
@@ -183,6 +185,17 @@ function Settings() {
     setSaved(true);
   }
 
+  async function toggleAutostart(next: boolean) {
+    setAutostart(next); // optimistic
+    try {
+      await invoke("set_autostart", { enabled: next });
+    } catch (e) {
+      setError(String(e));
+      // revert to the real state on failure
+      invoke<boolean>("get_autostart").then(setAutostart).catch(() => {});
+    }
+  }
+
   const Row = ({
     title,
     label,
@@ -196,7 +209,7 @@ function Settings() {
       <div className="flex flex-col">
         <span className="text-sm font-medium text-neutral-800">{title}</span>
         <span className="font-mono text-lg text-neutral-900">
-          {recording === action ? "Premi una combinazione…" : label}
+          {recording === action ? "Press a shortcut…" : label}
         </span>
       </div>
       <button
@@ -204,33 +217,51 @@ function Settings() {
         className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 active:bg-black disabled:opacity-50"
         disabled={recording !== null}
       >
-        {recording === action ? "In ascolto…" : "Registra"}
+        {recording === action ? "Listening…" : "Record"}
       </button>
     </div>
   );
 
   return (
     <main className="flex h-screen flex-col gap-3 bg-neutral-50 p-5 text-neutral-900">
-      <h1 className="text-base font-semibold">Scorciatoie</h1>
-      <Row title="Switch app" label={appLabel} action="app" />
-      <Row title="Switch finestre" label={winLabel} action="windows" />
+      <h1 className="text-base font-semibold">Settings</h1>
+      <Row title="Switch apps" label={appLabel} action="app" />
+      <Row title="Switch windows" label={winLabel} action="windows" />
+
+      <label className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-2.5">
+        <span className="text-sm font-medium text-neutral-800">Launch at login</span>
+        <input
+          type="checkbox"
+          checked={autostart}
+          onChange={(e) => toggleAutostart(e.currentTarget.checked)}
+          className="h-4 w-4 accent-blue-600"
+        />
+      </label>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {saved && !error && <p className="text-sm text-green-600">Salvato.</p>}
+      {saved && !error && <p className="text-sm text-green-600">Saved.</p>}
 
-      <div className="mt-auto flex items-center justify-end gap-2">
+      <div className="mt-auto flex items-center justify-between gap-2">
         <button
-          onClick={resetDefaults}
-          className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+          onClick={() => invoke("quit_app")}
+          className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
         >
-          Ripristina default
+          Quit
         </button>
-        <button
-          onClick={save}
-          className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 active:bg-blue-700"
-        >
-          Salva
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={resetDefaults}
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+          >
+            Restore defaults
+          </button>
+          <button
+            onClick={save}
+            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 active:bg-blue-700"
+          >
+            Save
+          </button>
+        </div>
       </div>
     </main>
   );

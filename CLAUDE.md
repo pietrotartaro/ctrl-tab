@@ -123,10 +123,30 @@ missing" — for that code a unit test is not required.
 - `src/App.tsx` — branches on window label: the overlay React UI (Alt-Tab style,
   icon size = `ICON_SIZE`, keep `ITEM_W` in `controller.rs` in sync) and the
   Settings window UI (record/save/reset shortcuts).
-- `src-tauri/src/lib.rs` also owns the tray (TrayIconBuilder: Impostazioni / Avvia
-  al login / Esci), the single-instance + autostart plugins, the Settings window
-  lifecycle (CloseRequested → hide, ExitRequested → prevent unless quitting), and
-  the Accessory↔Regular activation toggle.
+- `src-tauri/src/lib.rs` also owns the single-instance + autostart plugins, the
+  Settings window lifecycle (CloseRequested → hide, ExitRequested → prevent unless
+  quitting), and the Accessory↔Regular toggle. **There is NO tray / menu-bar item.**
+
+## Startup & lifecycle (Phase 13)
+
+- **Silent start.** First launch shows nothing: no window, **no Dock icon, no
+  menu-bar item**. The app is Accessory; the Settings window is created hidden
+  (`tauri.conf.json` `visible:false`); the shortcuts are the only sign it's running.
+- **Open Settings = relaunch.** Relaunching the app (Spotlight/Raycast/Finder) while
+  it's running sends `RunEvent::Reopen` → `show_settings`. `tauri-plugin-single-
+  instance`'s callback also calls `show_settings` (and prevents a 2nd process).
+- **Focus without a permanent Dock icon.** `show_settings` switches to Regular (so
+  the window comes front + takes keyboard focus) and `hide_settings` switches back to
+  Accessory — so the Dock icon appears ONLY while Settings is open and disappears when
+  it closes (idle = no Dock icon). (macOS 14+ needs Regular for reliable focus;
+  staying Accessory + `NSApp.activate` leaves a *lingering* Dock icon — chosen against.)
+- **Close ≠ quit.** Closing the Settings window (X / Cmd-W) prevents close + hides;
+  ExitRequested is prevented unless the `QUIT` flag is set.
+- **Quit** only via the red **Quit** button (bottom-left of Settings) → `quit_app`
+  sets `QUIT` and `app.exit(0)`. There is no tray, so this is the only full exit.
+- **Launch at login** toggle in Settings (`get_autostart` / `set_autostart` →
+  `tauri-plugin-autostart`); reflects and changes the real login-item state.
+- Settings UI is entirely in English.
 - `src-tauri/examples/post_keys.rs` — test harness that posts real CGEvents
   (`CGEventPost`) to drive the gesture for verification. Run with `tauri dev` up:
   `cargo run --example post_keys -- <apps-fwd|apps-back|windows|esc|probe>`.

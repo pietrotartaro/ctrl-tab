@@ -1,8 +1,9 @@
 // ctl-tab — macOS Alt-Tab clone (Tauri v2, single Rust binary).
 //
-// A background utility: Ctrl-Tab switches apps, Ctrl-§ switches windows of the
-// frontmost app (both shortcuts configurable). The overlay is a transparent,
-// non-activating NSPanel; a Settings window + menu-bar tray manage the app.
+// A silent background utility: Ctrl-Tab switches apps, Ctrl-§ switches windows of
+// the frontmost app (both shortcuts configurable). The overlay is a transparent,
+// non-activating NSPanel. No Dock icon, no menu-bar item. The Settings window is
+// opened by relaunching the app (Reopen) and quit from a button inside it.
 // See CLAUDE.md.
 
 mod apps;
@@ -20,14 +21,12 @@ use std::sync::OnceLock;
 // These traits must be in scope (unqualified) for the panel! macro expansion.
 use objc2::runtime::NSObjectProtocol;
 use objc2::{ClassType, Message};
-use tauri::menu::{CheckMenuItem, Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl};
 use tauri_nspanel::{panel, CollectionBehavior, PanelBuilder, PanelLevel, StyleMask};
 
 use controller::Action;
 
-/// Set true only when the user really wants to quit (tray → Esci).
+/// Set true only when the user really wants to quit (Settings → Quit).
 static QUIT: AtomicBool = AtomicBool::new(false);
 
 /// Whether verbose diagnostic logging is enabled (env `CTL_TAB_DEBUG=1`).
@@ -63,8 +62,10 @@ const PANEL_RADIUS: f64 = 14.0;
 
 // ---- Settings window + activation policy ----
 
-/// Background apps run Accessory (no Dock icon). The Settings window needs focus
-/// and keyboard, so switch to Regular while it's visible.
+/// The app is Accessory (no Dock icon) while idle. To give the Settings window
+/// reliable focus on macOS we switch to Regular while it is visible, then back to
+/// Accessory when it hides — so the Dock icon appears only while Settings is open
+/// and disappears when it closes (idle = no Dock icon).
 #[cfg(target_os = "macos")]
 fn set_accessory(app: &AppHandle, accessory: bool) {
     let policy = if accessory {
@@ -75,21 +76,26 @@ fn set_accessory(app: &AppHandle, accessory: bool) {
     let _ = app.set_activation_policy(policy);
 }
 
+/// Show + focus the Settings window (Regular while visible). Always runs on the
+/// main thread (the single-instance callback may fire off the main thread).
 fn show_settings(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
-        // Regular so the window comes to the front and can take focus.
+    let app = app.clone();
+    let _ = app.clone().run_on_main_thread(move || {
         #[cfg(target_os = "macos")]
-        set_accessory(app, false);
-        let _ = w.show();
-        let _ = w.set_focus();
-    }
+        set_accessory(&app, false); // Regular so the window comes front + takes focus
+        if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        }
+    });
 }
 
+/// Hide the Settings window and return to Accessory (removes the Dock icon).
 fn hide_settings(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
         let _ = w.hide();
     }
-    // Back to background (no Dock icon); also lets switch activation work.
     #[cfg(target_os = "macos")]
     set_accessory(app, true);
 }
@@ -147,6 +153,26 @@ fn reset_config() -> config::Config {
     controller::reset_config()
 }
 
+/// Quit the app for real (the only way to fully exit — there is no tray).
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    QUIT.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
+
+#[tauri::command]
+fn get_autostart(app: AppHandle) -> bool {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let mgr = app.autolaunch();
+    if enabled { mgr.enable() } else { mgr.disable() }.map_err(|e| e.to_string())
+}
+
 // ---- Overlay panel ----
 
 fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
@@ -198,49 +224,6 @@ fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-// ---- Tray ----
-
-fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let autostart_on = is_autostart_enabled(app);
-    let settings_i = MenuItem::with_id(app, "settings", "Impostazioni…", true, None::<&str>)?;
-    let autostart_i =
-        CheckMenuItem::with_id(app, "autostart", "Avvia al login", true, autostart_on, None::<&str>)?;
-    let quit_i = MenuItem::with_id(app, "quit", "Esci", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&settings_i, &autostart_i, &quit_i])?;
-
-    let mut builder = TrayIconBuilder::new()
-        .menu(&menu)
-        .tooltip("ctl-tab")
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "settings" => show_settings(app),
-            "autostart" => toggle_autostart(app),
-            "quit" => {
-                QUIT.store(true, Ordering::SeqCst);
-                app.exit(0);
-            }
-            _ => {}
-        });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
-    builder.build(app)?;
-    Ok(())
-}
-
-// ---- Autostart (optional) ----
-
-fn is_autostart_enabled(app: &AppHandle) -> bool {
-    use tauri_plugin_autostart::ManagerExt;
-    app.autolaunch().is_enabled().unwrap_or(false)
-}
-
-fn toggle_autostart(app: &AppHandle) {
-    use tauri_plugin_autostart::ManagerExt;
-    let mgr = app.autolaunch();
-    let now = mgr.is_enabled().unwrap_or(false);
-    let _ = if now { mgr.disable() } else { mgr.enable() };
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -261,10 +244,18 @@ pub fn run() {
             get_config,
             start_recording,
             save_config,
-            reset_config
+            reset_config,
+            quit_app,
+            get_autostart,
+            set_autostart
         ])
         .setup(|app| {
             let handle = app.handle();
+
+            // Silent background utility: Accessory (no Dock icon), and we never switch
+            // to Regular (that would show a Dock icon).
+            #[cfg(target_os = "macos")]
+            let _ = handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             // Load persisted config into the shared state.
             let config_path: PathBuf = handle
@@ -275,9 +266,9 @@ pub fn run() {
             controller::init(config_path);
 
             create_overlay(handle)?;
-            build_tray(handle)?;
 
-            // Settings window: closing it hides instead of quitting.
+            // Settings window is created hidden (see tauri.conf.json visible:false).
+            // Closing it hides instead of quitting.
             if let Some(settings) = app.get_webview_window(SETTINGS_LABEL) {
                 let h = handle.clone();
                 settings.on_window_event(move |event| {
@@ -287,8 +278,7 @@ pub fn run() {
                     }
                 });
             }
-            // Opened from the launcher → show Settings.
-            show_settings(handle);
+            // NOTE: we do NOT show Settings on first launch — start silent.
 
             // Native gesture pipeline.
             #[cfg(target_os = "macos")]
@@ -302,12 +292,16 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
-            // Don't quit when the last window closes; only on explicit tray → Esci.
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+        .run(|app, event| match event {
+            // Relaunching the app (Spotlight/Raycast/Finder) while it's already
+            // running sends Reopen — show the Settings window.
+            tauri::RunEvent::Reopen { .. } => show_settings(app),
+            // Don't quit when the last window closes; only on explicit Quit.
+            tauri::RunEvent::ExitRequested { api, .. } => {
                 if !QUIT.load(Ordering::SeqCst) {
                     api.prevent_exit();
                 }
             }
+            _ => {}
         });
 }
