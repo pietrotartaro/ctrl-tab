@@ -153,7 +153,8 @@ ctrl-tab is released under the [MIT License](./LICENSE) © 2026 Pietro Tartaro.
 ### Third-party
 
 This project builds on the following open-source components (licenses verified from
-the published packages):
+the published packages). A full per-dependency list is in
+[THIRD-PARTY-LICENSES.md](./THIRD-PARTY-LICENSES.md):
 
 | Component | License |
 | --- | --- |
