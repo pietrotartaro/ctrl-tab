@@ -119,7 +119,7 @@ impl Switcher {
             .map(|a| a.name.as_str())
             .unwrap_or("<empty>");
         crate::dlog!(
-            "[ctl-tab] gesture_start  mode={:<7} items={} selected={} -> {}",
+            "[ctrl-tab] gesture_start  mode={:<7} items={} selected={} -> {}",
             mode.label(),
             self.items.len(),
             self.selected,
@@ -127,7 +127,7 @@ impl Switcher {
         );
         for (i, a) in self.items.iter().enumerate() {
             crate::dlog!(
-                "[ctl-tab]   [{}] pid={:<6} {}{}",
+                "[ctrl-tab]   [{}] pid={:<6} {}{}",
                 i,
                 a.pid,
                 a.name,
@@ -148,7 +148,7 @@ impl Switcher {
             .map(|a| a.name.as_str())
             .unwrap_or("<empty>");
         crate::dlog!(
-            "[ctl-tab] advance        mode={:<7} dir={:+} selected={}/{} -> {}",
+            "[ctrl-tab] advance        mode={:<7} dir={:+} selected={}/{} -> {}",
             self.mode.label(),
             delta.signum(),
             self.selected,
@@ -166,14 +166,14 @@ impl Switcher {
         let item = self.items.get(self.selected).cloned();
         match &item {
             Some(a) => crate::dlog!(
-                "[ctl-tab] commit         mode={:<7} selected={} pid={} {}",
+                "[ctrl-tab] commit         mode={:<7} selected={} pid={} {}",
                 self.mode.label(),
                 self.selected,
                 a.pid,
                 a.name
             ),
             None => crate::dlog!(
-                "[ctl-tab] commit         mode={:<7} selected={} <empty>",
+                "[ctrl-tab] commit         mode={:<7} selected={} <empty>",
                 self.mode.label(),
                 self.selected
             ),
@@ -188,7 +188,7 @@ impl Switcher {
             return;
         }
         crate::dlog!(
-            "[ctl-tab] cancel         mode={:<7} selected={}",
+            "[ctrl-tab] cancel         mode={:<7} selected={}",
             self.mode.label(),
             self.selected
         );
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn filter_drops_own_process() {
-        let apps = vec![raw(1, "Safari", true), raw(42, "ctl-tab", true)];
+        let apps = vec![raw(1, "Safari", true), raw(42, "ctrl-tab", true)];
         let out = filter_eligible(apps, 42);
         assert_eq!(out, vec![raw(1, "Safari", true)]);
     }
@@ -347,7 +347,7 @@ mod tests {
             raw(1, "Safari", true),
             raw(2, "menubar-agent", false), // dropped (not regular)
             raw(3, "Notes", true),
-            raw(42, "ctl-tab", true), // dropped (own pid)
+            raw(42, "ctrl-tab", true), // dropped (own pid)
             raw(4, "Mail", true),
         ];
         let mru = vec![4, 1]; // Mail most recent, then Safari

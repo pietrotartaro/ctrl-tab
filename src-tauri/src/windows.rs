@@ -174,7 +174,7 @@ pub fn enumerate(pid: i32) -> Vec<String> {
     st.owner_pid = pid;
     st.windows = wins;
 
-    crate::dlog!("[ctl-tab] windows: enumerated {} for pid={}", titles.len(), pid);
+    crate::dlog!("[ctrl-tab] windows: enumerated {} for pid={}", titles.len(), pid);
     titles
 }
 
@@ -196,9 +196,9 @@ pub fn raise(index: usize) {
                     truth.as_concrete_TypeRef() as CFTypeRef,
                 );
             }
-            crate::dlog!("[ctl-tab] windows: raised index={index}");
+            crate::dlog!("[ctrl-tab] windows: raised index={index}");
         } else {
-            crate::dlog!("[ctl-tab] windows: raise index={index} out of range");
+            crate::dlog!("[ctrl-tab] windows: raise index={index} out of range");
         }
         st.owner_pid
     };
@@ -218,8 +218,8 @@ mod tests {
             "backend — boost.json"
         );
         assert_eq!(
-            reorder_vscode_title("App.tsx (Working Tree) (App.tsx) — ctl-tab"),
-            "ctl-tab — App.tsx (Working Tree) (App.tsx)"
+            reorder_vscode_title("App.tsx (Working Tree) (App.tsx) — ctrl-tab"),
+            "ctrl-tab — App.tsx (Working Tree) (App.tsx)"
         );
     }
 

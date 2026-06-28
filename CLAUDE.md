@@ -1,4 +1,4 @@
-# ctl-tab — macOS Alt-Tab clone (Tauri v2, single Rust binary)
+# ctrl-tab — macOS Alt-Tab clone (Tauri v2, single Rust binary)
 
 A background utility that reimplements Alt-Tab on macOS:
 
@@ -37,7 +37,7 @@ navigation with Tab / Shift+Tab, mouse selection (hover + click).
 > `kCGSessionEventTap` only receives events if the responsible process is trusted
 > for Accessibility. Without it the tap installs but sees **no** events (no gesture
 > works). In `tauri dev` the responsible process is the host terminal — grant
-> Accessibility to the terminal; for a bundled build, grant it to `ctl-tab`. The
+> Accessibility to the terminal; for a bundled build, grant it to `ctrl-tab`. The
 > app calls `AXIsProcessTrustedWithOptions` with the prompt at startup and logs
 > instructions if untrusted.
 
@@ -267,7 +267,7 @@ underneath (it is consumed). Automated equivalent: the `post_keys` example above
   - Removed the Phase-0 dev window (`tauri.conf.json` `windows: []`) and the
     `show_overlay`/`hide_overlay` commands + DevControls UI. The app is now purely
     background: 0 visible windows when idle, not in the Dock.
-  - Diagnostic logging is gated behind `CTL_TAB_DEBUG=1` via the `dlog!` macro +
+  - Diagnostic logging is gated behind `CTRL_TAB_DEBUG=1` via the `dlog!` macro +
     `debug_enabled()` (lib.rs). Actionable messages (Accessibility NOT granted, tap
     creation failure) stay unconditional. Verified silent without the flag.
   - Icon size is the `ICON_SIZE` constant in `src/App.tsx` (`ITEM_BOX` must equal
@@ -318,3 +318,21 @@ underneath (it is consumed). Automated equivalent: the `post_keys` example above
     Settings is closed). Tray menu item clicks (Esci/autostart) are wired but were
     not force-tested via synthetic menu-bar clicks; the ExitRequested/QUIT path and
     autostart toggle are simple and code-verified.
+
+- **2026-06-28 (Rebranding to ctrl-tab):**
+  - Renamed the app from its previous name everywhere: `package.json` name, Cargo
+    package `ctrl-tab` + lib `ctrl_tab_lib` (and `main.rs` `ctrl_tab_lib::run()`),
+    `productName` `ctrl-tab`, window title "ctrl-tab — Settings", the `[ctrl-tab]`
+    log prefixes, the debug env var `CTRL_TAB_DEBUG`, and all docs/comments. The
+    root project folder is intentionally NOT renamed here (done by hand afterwards);
+    nothing in the source depends on the folder name.
+  - **Bundle identifier changed** `com.pietro.alttabclone` → `com.pietro.ctrltab`
+    (the previous value was generic; chosen to reflect the new name).
+    Consequences after installing this build: **TCC identity changes** → must
+    **re-grant Accessibility**; the **autostart** login item was registered under
+    the previous name → toggle Launch-at-login off/on to re-register; the config dir
+    becomes `…Application Support/com.pietro.ctrltab/` → persisted shortcuts reset
+    to defaults on first run. (Also in README "Rename note".)
+  - Verified: source tree has zero occurrences of the previous name/identifier
+    tokens (excluding .git/node_modules/target/dist); `cargo build` +
+    `cargo test --lib` green; app launches under the new name.

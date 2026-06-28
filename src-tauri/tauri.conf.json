@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ctl-tab",
+  "productName": "ctrl-tab",
   "version": "0.1.0",
-  "identifier": "com.pietro.alttabclone",
+  "identifier": "com.pietro.ctrltab",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "settings",
-        "title": "ctl-tab — Settings",
+        "title": "ctrl-tab — Settings",
         "width": 460,
         "height": 384,
         "resizable": false,

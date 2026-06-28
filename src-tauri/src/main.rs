@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    ctl_tab_lib::run()
+    ctrl_tab_lib::run()
 }

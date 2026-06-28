@@ -140,7 +140,7 @@ pub fn build_ordered_apps() -> Vec<AppItem> {
             .count()
     };
     crate::dlog!(
-        "[ctl-tab] built {} apps, {} icons resolved (mru-ordered)",
+        "[ctrl-tab] built {} apps, {} icons resolved (mru-ordered)",
         ordered.len(),
         resolved
     );
@@ -181,9 +181,9 @@ pub fn bundle_id(pid: i32) -> Option<String> {
 pub fn activate(pid: i32) {
     if let Some(app) = running_app(pid) {
         let ok = app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
-        crate::dlog!("[ctl-tab] activate pid={pid} -> {ok}");
+        crate::dlog!("[ctrl-tab] activate pid={pid} -> {ok}");
     } else {
-        crate::dlog!("[ctl-tab] activate pid={pid} -> app not found");
+        crate::dlog!("[ctrl-tab] activate pid={pid} -> app not found");
     }
 }
 
@@ -214,5 +214,5 @@ pub fn install_workspace_observer() {
     };
     // Keep the observer alive for the app's lifetime.
     std::mem::forget(token);
-    crate::dlog!("[ctl-tab] NSWorkspace activation observer installed.");
+    crate::dlog!("[ctrl-tab] NSWorkspace activation observer installed.");
 }

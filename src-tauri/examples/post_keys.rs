@@ -7,7 +7,7 @@
 //!
 //! scenarios: probe | apps-fwd | apps-back | windows | esc
 //!
-//! Watch the app log for [ctl-tab] gesture_start / advance / commit / cancel.
+//! Watch the app log for [ctrl-tab] gesture_start / advance / commit / cancel.
 
 use std::{thread, time::Duration};
 

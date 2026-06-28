@@ -1,4 +1,4 @@
-# ctl-tab
+# ctrl-tab
 
 A macOS Alt-Tab clone built as a single-binary [Tauri v2](https://tauri.app) app
 (Rust + React). It's a background utility:
@@ -41,12 +41,12 @@ npm run tauri build
 Enable verbose diagnostic logging (otherwise the app is quiet):
 
 ```bash
-CTL_TAB_DEBUG=1 npm run tauri dev
+CTRL_TAB_DEBUG=1 npm run tauri dev
 ```
 
 ## Granting Accessibility
 
-ctl-tab uses a CoreGraphics **event tap** to capture the Ctrl-Tab / Ctrl-§ gesture and
+ctrl-tab uses a CoreGraphics **event tap** to capture the Ctrl-Tab / Ctrl-§ gesture and
 the **Accessibility API** to enumerate/raise windows. macOS only delivers events to the
 tap if the **responsible process** is trusted for Accessibility:
 
@@ -54,7 +54,7 @@ tap if the **responsible process** is trusted for Accessibility:
 2. Enable the relevant app:
    - In `npm run tauri dev`, the responsible process is your **terminal** (the one
      that launched the app) — enable that.
-   - For a bundled build, enable **ctl-tab**.
+   - For a bundled build, enable **ctrl-tab**.
 
 On first launch the app calls `AXIsProcessTrustedWithOptions` with the system prompt.
 You can grant it **while the app is running** — it polls for the permission and the
@@ -67,19 +67,31 @@ It requires **Accessibility only** — **no Screen Recording**.
 Trust is keyed to the binary's code signature (cdhash). Because the build is
 **ad-hoc signed**, every rebuild changes the cdhash and **invalidates the previous
 Accessibility grant** — after reinstalling a new build you must re-grant Accessibility
-to ctl-tab (remove the stale entry and re-add it if the toggle looks on but doesn't
+to ctrl-tab (remove the stale entry and re-add it if the toggle looks on but doesn't
 work). In `npm run tauri dev`, the dev binary inherits trust from the launching
 terminal, so granting the terminal is enough there.
 
 > `screencapture` (used only for dev screenshots, not by the app) needs **Screen
-> Recording** for the terminal — unrelated to ctl-tab's own permissions.
+> Recording** for the terminal — unrelated to ctrl-tab's own permissions.
+
+### Rename note
+
+The app was renamed to **ctrl-tab** and its bundle identifier changed from
+`com.pietro.alttabclone` to `com.pietro.ctrltab`. Changing the identifier changes
+the app's **TCC identity**, so after installing this build you must **re-grant
+Accessibility** to ctrl-tab (the previous grant does not carry over). The **Launch at
+login** entry was registered under the previous name, so toggle it **off then on** in
+Settings to re-register it under the new name (the stale login item, if any, can be
+removed in System Settings → General → Login Items). Persisted shortcuts also move
+to `~/Library/Application Support/com.pietro.ctrltab/config.json`, so they reset to
+the defaults (⌃Tab / ⌃§) on first run after the rename.
 
 ## Known MVP limitations
 
 - **Windows mode is the frontmost app's windows only** (not all windows of all apps).
 - **No previews/thumbnails** — windows show the app icon + the window title.
 - **Shortcuts** are configurable in Settings and persist to
-  `~/Library/Application Support/com.pietro.alttabclone/config.json`. The icon size
+  `~/Library/Application Support/com.pietro.ctrltab/config.json`. The icon size
   is the compile-time `ICON_SIZE` in `src/App.tsx` (keep `ITEM_W` in
   `src-tauri/src/controller.rs` in sync).
 - **Backward (Shift) direction** assumes the recorded combo does not itself include
@@ -106,16 +118,16 @@ the activation; the React frontend only renders the overlay from emitted events.
    ```
 
 2. **Output:**
-   - `.dmg`: `src-tauri/target/release/bundle/dmg/ctl-tab_0.1.0_aarch64.dmg`
-   - `.app`: `src-tauri/target/release/bundle/macos/ctl-tab.app`
+   - `.dmg`: `src-tauri/target/release/bundle/dmg/ctrl-tab_0.1.0_aarch64.dmg`
+   - `.app`: `src-tauri/target/release/bundle/macos/ctrl-tab.app`
 
-3. **Installazione:** apri il `.dmg` e trascina `ctl-tab.app` in `/Applications`.
+3. **Installazione:** apri il `.dmg` e trascina `ctrl-tab.app` in `/Applications`.
 
 4. **Primo avvio** (app non notarizzata): tasto destro sull'app → **Apri** → **Apri**.
    Se Gatekeeper la blocca comunque, rimuovi la quarantena:
 
    ```bash
-   xattr -dr com.apple.quarantine /Applications/ctl-tab.app
+   xattr -dr com.apple.quarantine /Applications/ctrl-tab.app
    ```
 
 5. **Permessi:** concedi **Accessibility** all'app **installata** (Impostazioni di

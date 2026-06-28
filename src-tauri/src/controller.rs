@@ -175,7 +175,7 @@ fn center_and_show(app: &AppHandle) {
     ns.setFrameOrigin(origin);
     p.make_key_and_order_front();
     crate::dlog!(
-        "[ctl-tab] present overlay {}x{} @ {},{}",
+        "[ctrl-tab] present overlay {}x{} @ {},{}",
         frame.size.width as i64,
         frame.size.height as i64,
         origin.x as i64,
@@ -220,7 +220,7 @@ fn start(app: &AppHandle, mode: Mode, required_mods: u64, from_left: bool) {
         Mode::Windows => window_items(),
     };
     if items.is_empty() {
-        crate::dlog!("[ctl-tab] start {}: no items, not showing", mode.label());
+        crate::dlog!("[ctrl-tab] start {}: no items, not showing", mode.label());
         return;
     }
     // Right: select the previous item (index 1). Left: wrap to the last item.
@@ -454,7 +454,7 @@ pub fn commit_index(app: &AppHandle, index: usize) {
 
 pub fn start_recording(action: Action) {
     state().lock().unwrap().recording = Some(action);
-    crate::dlog!("[ctl-tab] recording started for {}", action.key());
+    crate::dlog!("[ctrl-tab] recording started for {}", action.key());
 }
 
 /// Validate + apply + persist a new config. Returns the saved config on success.
@@ -475,7 +475,7 @@ pub fn save_config(app_combo: Combo, win_combo: Combo) -> Result<Config, String>
             return Err(format!("Impossibile salvare la config: {e}"));
         }
     }
-    crate::dlog!("[ctl-tab] config saved: {} / {}", cfg.switch_app.label, cfg.switch_windows.label);
+    crate::dlog!("[ctrl-tab] config saved: {} / {}", cfg.switch_app.label, cfg.switch_windows.label);
     Ok(cfg)
 }
 

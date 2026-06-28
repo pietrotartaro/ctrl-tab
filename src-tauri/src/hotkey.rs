@@ -104,7 +104,7 @@ unsafe extern "C" fn tap_callback(
 
     match etype {
         KCG_EVENT_TAP_DISABLED_BY_TIMEOUT | KCG_EVENT_TAP_DISABLED_BY_USER_INPUT => {
-            crate::dlog!("[ctl-tab] event tap disabled ({etype:#x}); re-enabling");
+            crate::dlog!("[ctrl-tab] event tap disabled ({etype:#x}); re-enabling");
             if !state.tap.is_null() {
                 CGEventTapEnable(state.tap, true);
             }
@@ -137,13 +137,13 @@ pub fn ensure_accessibility() -> bool {
         let dict = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), value.as_CFType())]);
         let trusted = AXIsProcessTrustedWithOptions(dict.as_concrete_TypeRef() as CFDictionaryRef);
         if trusted {
-            crate::dlog!("[ctl-tab] Accessibility granted.");
+            crate::dlog!("[ctrl-tab] Accessibility granted.");
         } else {
-            eprintln!("[ctl-tab] Accessibility NOT granted yet — shortcuts are inactive.");
-            eprintln!("[ctl-tab] Grant it in System Settings → Privacy & Security → Accessibility:");
-            eprintln!("[ctl-tab]   • in `tauri dev`, enable the host terminal app (it owns the process);");
-            eprintln!("[ctl-tab]   • for a bundled build, enable \"ctl-tab\".");
-            eprintln!("[ctl-tab] The app will start working automatically once granted (no restart needed).");
+            eprintln!("[ctrl-tab] Accessibility NOT granted yet — shortcuts are inactive.");
+            eprintln!("[ctrl-tab] Grant it in System Settings → Privacy & Security → Accessibility:");
+            eprintln!("[ctrl-tab]   • in `tauri dev`, enable the host terminal app (it owns the process);");
+            eprintln!("[ctrl-tab]   • for a bundled build, enable \"ctrl-tab\".");
+            eprintln!("[ctrl-tab] The app will start working automatically once granted (no restart needed).");
         }
         trusted
     }
@@ -185,7 +185,7 @@ fn try_install_tap(app: &AppHandle) -> bool {
 
         TAP_INSTALLED.store(true, Ordering::SeqCst);
         crate::dlog!(
-            "[ctl-tab] CGEventTap installed (session tap, head-insert, keyDown+flagsChanged, active)."
+            "[ctrl-tab] CGEventTap installed (session tap, head-insert, keyDown+flagsChanged, active)."
         );
         // state_ptr / tap / source intentionally leaked for the app's lifetime.
         true
@@ -199,7 +199,7 @@ pub fn install_event_tap(app: AppHandle) {
     if try_install_tap(&app) {
         return;
     }
-    eprintln!("[ctl-tab] event tap not installed yet — waiting for Accessibility to be granted…");
+    eprintln!("[ctrl-tab] event tap not installed yet — waiting for Accessibility to be granted…");
 
     std::thread::spawn(move || {
         // Poll for up to ~30 minutes; stop as soon as the tap is installed.
@@ -215,7 +215,7 @@ pub fn install_event_tap(app: AppHandle) {
             // Tap creation + run-loop wiring must happen on the main thread.
             let _ = app.clone().run_on_main_thread(move || {
                 if !TAP_INSTALLED.load(Ordering::SeqCst) && try_install_tap(&app) {
-                    eprintln!("[ctl-tab] Accessibility granted — shortcuts are now active.");
+                    eprintln!("[ctrl-tab] Accessibility granted — shortcuts are now active.");
                 }
             });
         }

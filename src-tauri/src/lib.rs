@@ -1,4 +1,4 @@
-// ctl-tab — macOS Alt-Tab clone (Tauri v2, single Rust binary).
+// ctrl-tab — macOS Alt-Tab clone (Tauri v2, single Rust binary).
 //
 // A silent background utility: Ctrl-Tab switches apps, Ctrl-§ switches windows of
 // the frontmost app (both shortcuts configurable). The overlay is a transparent,
@@ -29,17 +29,17 @@ use controller::Action;
 /// Set true only when the user really wants to quit (Settings → Quit).
 static QUIT: AtomicBool = AtomicBool::new(false);
 
-/// Whether verbose diagnostic logging is enabled (env `CTL_TAB_DEBUG=1`).
+/// Whether verbose diagnostic logging is enabled (env `CTRL_TAB_DEBUG=1`).
 pub(crate) fn debug_enabled() -> bool {
     static D: OnceLock<bool> = OnceLock::new();
     *D.get_or_init(|| {
-        std::env::var("CTL_TAB_DEBUG")
+        std::env::var("CTRL_TAB_DEBUG")
             .map(|v| !v.is_empty() && v != "0")
             .unwrap_or(false)
     })
 }
 
-/// `eprintln!` only when `CTL_TAB_DEBUG` is set. Use for diagnostics.
+/// `eprintln!` only when `CTRL_TAB_DEBUG` is set. Use for diagnostics.
 #[macro_export]
 macro_rules! dlog {
     ($($arg:tt)*) => {
@@ -178,7 +178,7 @@ fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
 fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
     let panel = PanelBuilder::<tauri::Wry, OverlayPanel>::new(app, OVERLAY_LABEL)
         .url(WebviewUrl::App("index.html".into()))
-        .title("ctl-tab overlay")
+        .title("ctrl-tab overlay")
         .with_window(|w| {
             w.decorations(false)
                 .always_on_top(true)
@@ -218,7 +218,7 @@ fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
             Some(NSVisualEffectState::Active),
             Some(PANEL_RADIUS),
         ) {
-            eprintln!("[ctl-tab] vibrancy not applied: {e:?}");
+            eprintln!("[ctrl-tab] vibrancy not applied: {e:?}");
         }
     }
     Ok(())
@@ -262,7 +262,7 @@ pub fn run() {
                 .path()
                 .app_config_dir()
                 .map(|d| d.join("config.json"))
-                .unwrap_or_else(|_| PathBuf::from("ctl-tab-config.json"));
+                .unwrap_or_else(|_| PathBuf::from("ctrl-tab-config.json"));
             controller::init(config_path);
 
             create_overlay(handle)?;
