@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -29,15 +29,28 @@ type ShowPayload = {
 function Overlay() {
   const [items, setItems] = useState<SwitchItem[]>([]);
   const [selected, setSelected] = useState(0);
+  // Hover-selection is enabled only after a REAL mouse movement (not when the panel
+  // appears under a stationary cursor).
+  const mouseActive = useRef(false);
+  const baseline = useRef<{ x: number; y: number } | null>(null);
+  const lastHover = useRef(-1);
 
   useEffect(() => {
     const unlisten = [
       listen<ShowPayload>("switcher:show", (e) => {
         setItems(e.payload.items);
         setSelected(e.payload.selected);
+        // Reset hover gating for the new gesture.
+        mouseActive.current = false;
+        baseline.current = null;
+        lastHover.current = e.payload.selected;
       }),
       listen<{ selected: number }>("switcher:select", (e) => {
         setSelected(e.payload.selected);
+      }),
+      listen("switcher:hide", () => {
+        mouseActive.current = false;
+        baseline.current = null;
       }),
     ];
     return () => {
@@ -53,6 +66,45 @@ function Overlay() {
     invoke("present_overlay");
   }, [items]);
 
+  // Hover selection driven by real movement only; plus suppress the context menu
+  // (Ctrl is held while the switcher is open → Ctrl+click would be a secondary click).
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      if (!mouseActive.current) {
+        const moved = e.movementX !== 0 || e.movementY !== 0;
+        if (baseline.current == null) {
+          // First event after open: treat as the (possibly spurious) appearance
+          // position. Activate only if it carries real movement.
+          baseline.current = { x: e.screenX, y: e.screenY };
+          if (!moved) return;
+        } else if (
+          e.screenX === baseline.current.x &&
+          e.screenY === baseline.current.y &&
+          !moved
+        ) {
+          return;
+        }
+        mouseActive.current = true;
+      }
+      const el = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest(
+        "[data-idx]",
+      ) as HTMLElement | null;
+      if (!el) return;
+      const i = Number(el.dataset.idx);
+      if (i === lastHover.current) return; // only on selection change
+      lastHover.current = i;
+      setSelected(i);
+      invoke("switcher_hover", { index: i });
+    }
+    const onCtx = (e: Event) => e.preventDefault();
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("contextmenu", onCtx);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("contextmenu", onCtx);
+    };
+  }, []);
+
   return (
     // The window is Rust-sized to the content; the dark-glass panel fills it and
     // wraps the icon grid onto multiple rows at the window width — never scrolls.
@@ -63,11 +115,16 @@ function Overlay() {
         return (
           <button
             key={item.id}
-            onMouseEnter={() => {
-              setSelected(i);
-              invoke("switcher_hover", { index: i });
+            data-idx={i}
+            // Commit on pointer DOWN for ANY button so a Ctrl+click (secondary
+            // click, since Ctrl is held) still opens the app; preventDefault stops
+            // the context menu. Commit resets state, so the Ctrl release won't
+            // double-commit.
+            onPointerDown={(e) => {
+              e.preventDefault();
+              invoke("switcher_commit", { index: i });
             }}
-            onClick={() => invoke("switcher_commit", { index: i })}
+            onContextMenu={(e) => e.preventDefault()}
             style={{
               width: ITEM_BOX,
               borderRadius: "var(--tile-radius)",
@@ -112,23 +169,21 @@ type Combo = { modifiers: number; key_code: number; label: string };
 type Config = { switch_app: Combo; switch_windows: Combo };
 type ActionKey = "app" | "windows";
 
-/** Settings window: customize the two shortcuts, autostart, and quit. */
+/** Settings window: shortcuts (instant apply), autostart switch, quit. */
 function Settings() {
   const [appLabel, setAppLabel] = useState("…");
   const [winLabel, setWinLabel] = useState("…");
-  // Captured combos (modifiers + keyCode) per action; null until (re)recorded.
-  const [appCombo, setAppCombo] = useState<{ modifiers: number; keyCode: number } | null>(null);
-  const [winCombo, setWinCombo] = useState<{ modifiers: number; keyCode: number } | null>(null);
   const [recording, setRecording] = useState<ActionKey | null>(null);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
   const [autostart, setAutostart] = useState(false);
+  // Current applied combos, kept in a ref so the recording:done listener (set up
+  // once) always sees the latest values.
+  const combos = useRef<{ app: Combo; win: Combo } | null>(null);
 
   function applyConfig(cfg: Config) {
     setAppLabel(cfg.switch_app.label);
     setWinLabel(cfg.switch_windows.label);
-    setAppCombo({ modifiers: cfg.switch_app.modifiers, keyCode: cfg.switch_app.key_code });
-    setWinCombo({ modifiers: cfg.switch_windows.modifiers, keyCode: cfg.switch_windows.key_code });
+    combos.current = { app: cfg.switch_app, win: cfg.switch_windows };
   }
 
   useEffect(() => {
@@ -136,16 +191,27 @@ function Settings() {
     invoke<boolean>("get_autostart").then(setAutostart).catch(() => {});
     const un = listen<{ action: ActionKey; modifiers: number; keyCode: number; label: string }>(
       "recording:done",
-      (e) => {
-        const { action, modifiers, keyCode, label } = e.payload;
+      async (e) => {
+        const { action, modifiers, keyCode } = e.payload;
         setRecording(null);
-        setSaved(false);
-        if (action === "app") {
-          setAppCombo({ modifiers, keyCode });
-          setAppLabel(label);
-        } else {
-          setWinCombo({ modifiers, keyCode });
-          setWinLabel(label);
+        const cur = combos.current;
+        if (!cur) return;
+        // Build the new pair and apply+persist instantly (the backend validates).
+        const next = { modifiers, key_code: keyCode, label: "" };
+        const app = action === "app" ? next : cur.app;
+        const win = action === "windows" ? next : cur.win;
+        setError("");
+        try {
+          const cfg = await invoke<Config>("save_config", {
+            appMods: app.modifiers,
+            appKey: app.key_code,
+            winMods: win.modifiers,
+            winKey: win.key_code,
+          });
+          applyConfig(cfg); // success → labels reflect the new combo
+        } catch (err) {
+          // Validation failed → keep the previous combo, show the error.
+          setError(String(err));
         }
       },
     );
@@ -156,55 +222,27 @@ function Settings() {
 
   function record(action: ActionKey) {
     setError("");
-    setSaved(false);
     setRecording(action);
     invoke("start_recording", { action });
-  }
-
-  async function save() {
-    if (!appCombo || !winCombo) return;
-    setError("");
-    try {
-      const cfg = await invoke<Config>("save_config", {
-        appMods: appCombo.modifiers,
-        appKey: appCombo.keyCode,
-        winMods: winCombo.modifiers,
-        winKey: winCombo.keyCode,
-      });
-      applyConfig(cfg);
-      setSaved(true);
-    } catch (e) {
-      setError(String(e));
-    }
   }
 
   async function resetDefaults() {
     setError("");
     const cfg = await invoke<Config>("reset_config");
     applyConfig(cfg);
-    setSaved(true);
   }
 
   async function toggleAutostart(next: boolean) {
     setAutostart(next); // optimistic
     try {
-      await invoke("set_autostart", { enabled: next });
+      await invoke("set_autostart", { enabled: next }); // applied instantly
     } catch (e) {
       setError(String(e));
-      // revert to the real state on failure
-      invoke<boolean>("get_autostart").then(setAutostart).catch(() => {});
+      invoke<boolean>("get_autostart").then(setAutostart).catch(() => {}); // revert
     }
   }
 
-  const Row = ({
-    title,
-    label,
-    action,
-  }: {
-    title: string;
-    label: string;
-    action: ActionKey;
-  }) => (
+  const Row = ({ title, label, action }: { title: string; label: string; action: ActionKey }) => (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-2.5">
       <div className="flex flex-col">
         <span className="text-sm font-medium text-neutral-800">{title}</span>
@@ -228,18 +266,21 @@ function Settings() {
       <Row title="Switch apps" label={appLabel} action="app" />
       <Row title="Switch windows" label={winLabel} action="windows" />
 
-      <label className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-2.5">
         <span className="text-sm font-medium text-neutral-800">Launch at login</span>
-        <input
-          type="checkbox"
-          checked={autostart}
-          onChange={(e) => toggleAutostart(e.currentTarget.checked)}
-          className="h-4 w-4 accent-blue-600"
-        />
-      </label>
+        <button
+          role="switch"
+          aria-checked={autostart}
+          onClick={() => toggleAutostart(!autostart)}
+          className={`flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${
+            autostart ? "justify-end bg-blue-600" : "justify-start bg-neutral-300"
+          }`}
+        >
+          <span className="h-5 w-5 rounded-full bg-white shadow" />
+        </button>
+      </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {saved && !error && <p className="text-sm text-green-600">Saved.</p>}
 
       <div className="mt-auto flex items-center justify-between gap-2">
         <button
@@ -248,20 +289,12 @@ function Settings() {
         >
           Quit
         </button>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={resetDefaults}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
-          >
-            Restore defaults
-          </button>
-          <button
-            onClick={save}
-            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 active:bg-blue-700"
-          >
-            Save
-          </button>
-        </div>
+        <button
+          onClick={resetDefaults}
+          className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+        >
+          Restore defaults
+        </button>
       </div>
     </main>
   );
