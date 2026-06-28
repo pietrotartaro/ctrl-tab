@@ -57,8 +57,8 @@ binary built with [Tauri v2](https://tauri.app) — no Dock icon, no menu-bar cl
 ## Build from source / create the `.dmg`
 
 ```bash
-# 1. Clone (replace <owner> with the repository owner)
-git clone https://github.com/<owner>/ctrl-tab.git
+# 1. Clone
+git clone https://github.com/pietrotartaro/ctrl-tab.git
 cd ctrl-tab
 
 # 2. Install frontend dependencies
